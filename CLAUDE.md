@@ -7,7 +7,7 @@ A top-down pixel-art farming game for a 6–8 year old on a tablet (touch, lands
 - `src/lib/game.ts` holds all the rules: pure functions on a plain JSON `Farm`, unit tested. Keep it that way, and keep `parseFarm` accepting old saves: a child's farm must never be wiped by an update.
 - Growth uses real timestamps, so crops keep growing while the app is closed.
 - `src/lib/world/`: `map.ts` (terrain, buildings, people; built in code), `interact.ts` (what's on a tile, and so what tapping it does: pure, tested), `path.ts` (shortest walk, breadth first: pure, tested), `engine.ts` (canvas loop: walking routes, camera, wandering animals, riding, fishing line), `sprites.ts` (all the pixel art).
-- Tapping something walks beside it, faces it and uses it (`act` in `+page.svelte`). Animals hold still while you walk to them. A horse can't go on the crops, so tapping a plot while riding hops off first.
+- Tapping something walks beside it, faces it and uses it (`act` in `+page.svelte`). Animals hold still while you walk to them. A horse can't go on the crops, so tapping a plot it can't reach hops off first. Animals keep clear of the tiles by their gates.
 - Art is drawn in code: flat rectangles on small canvases with an automatic 1px ink outline, at 16px per tile, scaled up to about 64px on a tablet. No image files apart from the app icons. Menus show sprites as data URLs.
 - `map.spec.ts` checks every plot, person, building and the horse can be reached from the start: run it after moving things on the map. A saved position that ends up blocked resets to the start.
 - Numbers use Press Start 2P; words use Pixelify Sans (its 5 looks like an S).

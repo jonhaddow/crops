@@ -76,13 +76,27 @@ class Wanderer {
 		};
 	}
 
+	private inside(x: number, y: number) {
+		const a = this.area;
+		return x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h;
+	}
+
+	/** Next to a way out of its area: standing there would block the gate. */
+	private byGate(x: number, y: number) {
+		return Object.values(STEP).some((s) => {
+			const nx = x + s.x;
+			const ny = y + s.y;
+			return !this.inside(nx, ny) && open(nx, ny);
+		});
+	}
+
 	occupies(x: number, y: number) {
 		return (this.x === x && this.y === y) || (this.from?.x === x && this.from?.y === y);
 	}
 
 	update(dt: number, now: number, stay: boolean, free: (x: number, y: number) => boolean) {
 		if (this.from) {
-			this.t += dt / this.ms;
+			this.t = Math.min(1, this.t + dt / this.ms);
 			if (this.t >= 1) {
 				this.from = null;
 				this.t = 0;
@@ -95,8 +109,7 @@ class Wanderer {
 		const d = (['up', 'down', 'left', 'right'] as Dir[])[Math.floor(Math.random() * 4)];
 		const x = this.x + STEP[d].x;
 		const y = this.y + STEP[d].y;
-		const a = this.area;
-		if (x < a.x || x >= a.x + a.w || y < a.y || y >= a.y + a.h || !free(x, y)) return;
+		if (!this.inside(x, y) || this.byGate(x, y) || !free(x, y)) return;
 		if (d === 'left') this.left = true;
 		if (d === 'right') this.left = false;
 		this.from = { x: this.x, y: this.y };
@@ -141,9 +154,7 @@ export class World {
 
 	constructor(
 		private canvas: HTMLCanvasElement,
-		private farm: Farm,
-		/** Called when the player arrives on a tile, turns, or gets on or off the horse. */
-		private onMove: () => void
+		private farm: Farm
 	) {
 		this.ctx = canvas.getContext('2d')!;
 		this.bg = background();
@@ -249,7 +260,6 @@ export class World {
 		p.x = this.farm.horse.x;
 		p.y = this.farm.horse.y;
 		this.farm.riding = true;
-		this.onMove();
 	}
 
 	/** Gets off onto a free tile beside the horse (the one in front if it's free). */
@@ -268,7 +278,6 @@ export class World {
 			this.t = 0;
 			p.x = x;
 			p.y = y;
-			this.onMove();
 			return true;
 		}
 		return false;
@@ -307,12 +316,11 @@ export class World {
 		const stepMs = this.farm.riding ? RIDE_MS : WALK_MS;
 
 		if (this.from) {
-			this.t += dt / stepMs;
+			this.t = Math.min(1, this.t + dt / stepMs);
 			if (this.t >= 1) {
 				this.from = null;
 				this.t = 0;
 				this.steps++;
-				this.onMove();
 			}
 		}
 
@@ -322,19 +330,19 @@ export class World {
 			if (p.facing !== dir) {
 				p.facing = dir;
 				this.heldSince = performance.now();
-				this.onMove();
 			} else if (performance.now() - this.heldSince >= TURN_MS) this.step(dir);
 		}
 
 		const free = (x: number, y: number) =>
 			!(p.x === x && p.y === y) && !(this.from?.x === x && this.from?.y === y);
 		// Animals hold still while the player walks over to use something.
-		if (this.walk?.arrive) return;
-		this.hen.update(dt, now, henState(this.farm, now) === 'eating', free);
-		const animalFree = (x: number, y: number) =>
-			free(x, y) && !this.cow.occupies(x, y) && !this.sheep.occupies(x, y);
-		this.cow.update(dt, now, cowState(this.farm, now) === 'eating', animalFree);
-		this.sheep.update(dt, now, false, animalFree);
+		if (!this.walk?.arrive) {
+			const animalFree = (x: number, y: number) =>
+				free(x, y) && !this.cow.occupies(x, y) && !this.sheep.occupies(x, y);
+			this.hen.update(dt, now, henState(this.farm, now) === 'eating', free);
+			this.cow.update(dt, now, cowState(this.farm, now) === 'eating', animalFree);
+			this.sheep.update(dt, now, false, animalFree);
+		}
 	}
 
 	private followRoute() {
@@ -353,7 +361,6 @@ export class World {
 		}
 		this.walk = null;
 		if (walk.face) this.farm.player.facing = walk.face;
-		this.onMove();
 		walk.arrive?.();
 	}
 

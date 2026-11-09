@@ -5,22 +5,25 @@
 import { H, NPCS, open, START_HORSE, START_PLAYER, W, type Dir, type Spot } from './world/map.ts';
 
 export const CROPS = {
-	carrot: { name: 'Carrot', growMs: 60_000, seedPrice: 1, sellPrice: 2 },
-	strawberry: { name: 'Strawberry', growMs: 3 * 60_000, seedPrice: 2, sellPrice: 4 },
-	pumpkin: { name: 'Pumpkin', growMs: 5 * 60_000, seedPrice: 3, sellPrice: 5 }
+	carrot: { name: 'Carrot', growMs: 60_000, seedPrice: 1 },
+	strawberry: { name: 'Strawberry', growMs: 3 * 60_000, seedPrice: 2 },
+	pumpkin: { name: 'Pumpkin', growMs: 5 * 60_000, seedPrice: 3 }
 } as const;
 
 export type Crop = keyof typeof CROPS;
 export const CROP_NAMES = Object.keys(CROPS) as Crop[];
 
-export const EGG = { name: 'Egg', layMs: 2 * 60_000, sellPrice: 2 } as const;
+export const EGG = { layMs: 2 * 60_000 } as const;
 
 export const COW = { milkMs: 3 * 60_000 } as const;
 export const SHEEP = { woolMs: 4 * 60_000 } as const;
 
-/** Everything else that can go in the basket, and what the market pays. */
-const OTHER = {
-	egg: { one: 'egg', many: 'eggs', price: EGG.sellPrice },
+/** Everything that can go in the basket: its name, and what the market pays. */
+const ITEMS = {
+	carrot: { one: 'carrot', many: 'carrots', price: 2 },
+	strawberry: { one: 'strawberry', many: 'strawberries', price: 4 },
+	pumpkin: { one: 'pumpkin', many: 'pumpkins', price: 5 },
+	egg: { one: 'egg', many: 'eggs', price: 2 },
 	milk: { one: 'bottle of milk', many: 'bottles of milk', price: 3 },
 	wool: { one: 'ball of wool', many: 'balls of wool', price: 4 },
 	fish: { one: 'fish', many: 'fish', price: 2 },
@@ -29,26 +32,16 @@ const OTHER = {
 	boot: { one: 'old boot', many: 'old boots', price: 1 }
 } as const;
 
-/** What can be in the basket: crops, animal produce and whatever's fished out. */
-export type Produce = Crop | keyof typeof OTHER;
-export const PRODUCE: Produce[] = [
-	...CROP_NAMES,
-	...(Object.keys(OTHER) as (keyof typeof OTHER)[])
-];
+export type Produce = keyof typeof ITEMS;
+export const PRODUCE = Object.keys(ITEMS) as Produce[];
 
 export function sellPrice(item: Produce): number {
-	return item in CROPS ? CROPS[item as Crop].sellPrice : OTHER[item as keyof typeof OTHER].price;
+	return ITEMS[item].price;
 }
 
 /** "1 carrot", "3 strawberries", "2 bottles of milk". */
 export function amount(item: Produce, count: number): string {
-	if (item in CROPS) {
-		const one = CROPS[item as Crop].name.toLowerCase();
-		const many = item === 'strawberry' ? 'strawberries' : `${one}s`;
-		return `${count} ${count === 1 ? one : many}`;
-	}
-	const o = OTHER[item as keyof typeof OTHER];
-	return `${count} ${count === 1 ? o.one : o.many}`;
+	return `${count} ${count === 1 ? ITEMS[item].one : ITEMS[item].many}`;
 }
 
 /** A planted plot. Growing starts when it's watered. */
@@ -204,16 +197,13 @@ export function catchFor(roll: number): Produce {
 }
 
 /** Gives villagers whose turn has come something new to ask for. */
-export function updateRequests(farm: Farm, now: number, random = Math.random): boolean {
-	let changed = false;
+export function updateRequests(farm: Farm, now: number, random = Math.random) {
 	for (const id of REQUESTERS) {
 		if (farm.requests[id] || now < (farm.requestAt[id] ?? 0)) continue;
 		const item = REQUEST_ITEMS[Math.floor(random() * REQUEST_ITEMS.length)];
 		const count = 1 + Math.floor(random() * (item === 'pumpkin' ? 2 : 3));
 		farm.requests[id] = { item, count, reward: count * sellPrice(item) + 2 };
-		changed = true;
 	}
-	return changed;
 }
 
 /** Hands a villager what they asked for, if it's in the basket; returns the coins earned. */

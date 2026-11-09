@@ -78,7 +78,7 @@ describe('market', () => {
 		farm.basket.pumpkin = 1;
 		expect(sell(farm, 'pumpkin')).toBe(true);
 		expect(sell(farm, 'pumpkin')).toBe(false);
-		expect(farm.coins).toBe(5 + CROPS.pumpkin.sellPrice);
+		expect(farm.coins).toBe(5 + sellPrice('pumpkin'));
 
 		farm.coins = 2;
 		expect(buy(farm, 'pumpkin')).toBe(false);

@@ -117,7 +117,7 @@ test('sell at the market stall and buy seeds; it all survives a reload', async (
 	await tapTile(page, 26, 11);
 	await page.getByRole('button', { name: 'Sell carrot' }).tap();
 	await page.getByRole('button', { name: 'Sell egg' }).tap();
-	await expect(page.getByText('Nothing to sell yet.')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Sell egg' })).toBeDisabled();
 	await page.getByRole('button', { name: 'Buy pumpkin seed' }).tap();
 	await page.getByRole('button', { name: 'Close' }).tap();
 	await expect(page.getByTestId('coins')).toHaveText('6');

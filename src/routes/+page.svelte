@@ -44,6 +44,11 @@
 	let dialog = $state<string[] | null>(null);
 	let picking = $state<number | null>(null);
 	let marketOpen = $state(false);
+	/**
+	 * What the market lists: what was in the basket when it opened. Rows stay
+	 * put (greyed out once sold) so repeated taps don't sell the next thing.
+	 */
+	let forSale = $state<Produce[]>([]);
 	/** Fishing: waiting for a bite, or a fish is biting (tap now!). */
 	let fishing = $state<'wait' | 'bite' | null>(null);
 	let fishTimer: ReturnType<typeof setTimeout> | undefined;
@@ -59,7 +64,7 @@
 	}
 
 	onMount(() => {
-		world = new World(canvas, farm, () => {});
+		world = new World(canvas, farm);
 		world.resize();
 		world.start();
 		const observer = new ResizeObserver(() => world.resize());
@@ -158,6 +163,7 @@
 				break;
 			case 'shop':
 				world.faceNpc('shopkeeper');
+				forSale = basketItems;
 				marketOpen = true;
 				play('talk');
 				break;
@@ -402,8 +408,13 @@
 
 			<h2>Sell</h2>
 			<div class="rows">
-				{#each basketItems as item (item)}
-					<button class="row" aria-label="Sell {item}" onclick={() => sellOne(item)}>
+				{#each forSale as item (item)}
+					<button
+						class="row"
+						disabled={farm.basket[item] === 0}
+						aria-label="Sell {item}"
+						onclick={() => sellOne(item)}
+					>
 						<img class="big" src={img(item)} alt="" />
 						<span class="num">×{farm.basket[item]}</span>
 						<span class="price"
