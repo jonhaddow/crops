@@ -79,13 +79,14 @@
 		border: 4px solid var(--ink);
 	}
 
+	.arm {
+		box-shadow: 0 6px 0 var(--ink);
+	}
+
 	.hub {
 		left: 33%;
 		top: 33%;
 		border: none;
-		width: 34%;
-		height: 34%;
-		margin: 0;
 		box-shadow:
 			0 -4px 0 0 #4b4f58,
 			0 4px 0 0 #4b4f58;
@@ -96,6 +97,7 @@
 		top: 0;
 		border-bottom: none;
 		border-radius: 8px 8px 0 0;
+		box-shadow: none;
 	}
 
 	.down {
@@ -103,7 +105,6 @@
 		bottom: 0;
 		border-top: none;
 		border-radius: 0 0 8px 8px;
-		box-shadow: 0 6px 0 var(--ink);
 	}
 
 	.left {
@@ -111,7 +112,6 @@
 		top: 33%;
 		border-right: none;
 		border-radius: 8px 0 0 8px;
-		box-shadow: 0 6px 0 var(--ink);
 	}
 
 	.right {
@@ -119,7 +119,6 @@
 		top: 33%;
 		border-left: none;
 		border-radius: 0 8px 8px 0;
-		box-shadow: 0 6px 0 var(--ink);
 	}
 
 	.on {

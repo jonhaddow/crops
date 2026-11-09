@@ -91,6 +91,13 @@ describe('target', () => {
 		farm.riding = true;
 		expect(target(farm, 0, away)).toEqual({ kind: 'dismount' });
 	});
+
+	it('can always ride a horse, even one left on a plot', () => {
+		const farm = newFarm();
+		farm.horse = { x: 5, y: 10 };
+		farm.player = { x: 5, y: 9, facing: 'down' };
+		expect(target(farm, 0, away)).toEqual({ kind: 'horse' });
+	});
 });
 
 describe('saves', () => {

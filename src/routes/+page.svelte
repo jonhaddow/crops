@@ -43,6 +43,12 @@
 	 * only a tap that starts on the backdrop closes it.
 	 */
 	let backdropDown = false;
+	const backdrop = {
+		onpointerdown: (e: PointerEvent) => (backdropDown = e.target === e.currentTarget),
+		onclick: (e: MouseEvent) => {
+			if (backdropDown && e.target === e.currentTarget) closeAll();
+		}
+	};
 
 	const busy = $derived(dialog !== null || picking !== null || marketOpen);
 	$effect(() => {
@@ -256,14 +262,7 @@
 {/if}
 
 {#if picking !== null}
-	<div
-		class="overlay"
-		role="presentation"
-		onpointerdown={(e) => (backdropDown = e.target === e.currentTarget)}
-		onclick={(e) => {
-			if (backdropDown && e.target === e.currentTarget) closeAll();
-		}}
-	>
+	<div class="overlay" role="presentation" {...backdrop}>
 		<div
 			class="card"
 			role="dialog"
@@ -294,14 +293,7 @@
 {/if}
 
 {#if marketOpen}
-	<div
-		class="overlay"
-		role="presentation"
-		onpointerdown={(e) => (backdropDown = e.target === e.currentTarget)}
-		onclick={(e) => {
-			if (backdropDown && e.target === e.currentTarget) closeAll();
-		}}
-	>
+	<div class="overlay" role="presentation" {...backdrop}>
 		<div
 			class="card market"
 			role="dialog"

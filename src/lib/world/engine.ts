@@ -10,6 +10,7 @@ import {
 	NPCS,
 	open,
 	PEN,
+	plotAt,
 	PLOTS,
 	STEP,
 	TERRAIN,
@@ -153,6 +154,8 @@ export class World {
 
 	private blocked(x: number, y: number): boolean {
 		if (!open(x, y)) return true;
+		// Horses stay off the crops.
+		if (this.farm.riding && plotAt(x, y) >= 0) return true;
 		if (x === this.hen.x && y === this.hen.y) return true;
 		if (this.hen.from && x === this.hen.from.x && y === this.hen.from.y) return true;
 		const h = this.farm.horse;
@@ -229,7 +232,7 @@ export class World {
 	private playerPos(): Spot {
 		const p = this.farm.player;
 		if (!this.from) return { x: p.x, y: p.y };
-		const t = ease(this.t);
+		const t = clamp01(this.t);
 		return { x: this.from.x + (p.x - this.from.x) * t, y: this.from.y + (p.y - this.from.y) * t };
 	}
 
@@ -285,7 +288,7 @@ export class World {
 		}
 
 		const hen = this.hen;
-		const ht = ease(hen.t);
+		const ht = clamp01(hen.t);
 		const hx = hen.from ? hen.from.x + (hen.x - hen.from.x) * ht : hen.x;
 		const hy = hen.from ? hen.from.y + (hen.y - hen.from.y) * ht : hen.y;
 		const hs = henState(this.farm, now);
@@ -444,7 +447,7 @@ export class World {
 	}
 }
 
-function ease(t: number) {
+function clamp01(t: number) {
 	return Math.min(1, Math.max(0, t));
 }
 

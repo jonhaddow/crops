@@ -8,7 +8,7 @@ A top-down pixel-art farming game for a 6–8 year old on a tablet (touch, lands
 - Growth uses real timestamps, so crops keep growing while the app is closed.
 - `src/lib/world/`: `map.ts` (terrain, buildings, people; built in code), `interact.ts` (what A does for the tile in front: pure, tested), `engine.ts` (canvas loop: tile-by-tile movement, camera, chicken, riding), `sprites.ts` (all the pixel art).
 - Art is drawn in code: flat rectangles on small canvases with an automatic 1px ink outline, at 16px per tile, scaled up to about 64px on a tablet. No image files apart from the app icons. Menus show sprites as data URLs.
-- `map.spec.ts` checks every plot, person, building and the horse can be reached from the start: run it after moving things on the map.
+- `map.spec.ts` checks every plot, person, building and the horse can be reached from the start: run it after moving things on the map. A saved position that ends up blocked resets to the start.
 - Numbers use Press Start 2P; words use Pixelify Sans (its 5 looks like an S).
 - A acts on finger down, so pop-ups only close on taps that start on their backdrop.
 - Kid rules: nothing dies or is lost, icons over words, big touch targets, and `rescue()` hands over a carrot seed if the farm is ever stuck.

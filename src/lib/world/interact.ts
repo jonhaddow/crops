@@ -14,14 +14,9 @@ export type Target =
 	| { kind: 'house' }
 	| { kind: 'stable' };
 
-export const LABELS: Record<string, string> = {
-	plant: 'Plant',
-	water: 'Water',
-	pick: 'Pick',
-	wait: 'Growing',
-	feed: 'Feed',
-	collect: 'Egg!',
-	chickenwait: 'Cluck',
+const PLOT_LABELS = { plant: 'Plant', water: 'Water', pick: 'Pick', wait: 'Growing' };
+const CHICKEN_LABELS = { feed: 'Feed', collect: 'Egg!', wait: 'Cluck' };
+const LABELS = {
 	horse: 'Ride',
 	dismount: 'Hop off',
 	npc: 'Talk',
@@ -32,10 +27,11 @@ export const LABELS: Record<string, string> = {
 	stable: 'Look'
 };
 
+/** The A button's label for a target. */
 export function label(t: Target | null): string {
 	if (!t) return '';
-	if (t.kind === 'plot') return LABELS[t.action];
-	if (t.kind === 'chicken') return LABELS[t.action === 'wait' ? 'chickenwait' : t.action];
+	if (t.kind === 'plot') return PLOT_LABELS[t.action];
+	if (t.kind === 'chicken') return CHICKEN_LABELS[t.action];
 	return LABELS[t.kind];
 }
 
@@ -48,6 +44,8 @@ export function facingTile(farm: Farm): Spot {
 export function target(farm: Farm, now: number, hen: Spot): Target | null {
 	if (farm.riding) return { kind: 'dismount' };
 	const { x, y } = facingTile(farm);
+	// The horse first, so it can always be ridden away, wherever it's left.
+	if (farm.horse.x === x && farm.horse.y === y) return { kind: 'horse' };
 
 	const plot = plotAt(x, y);
 	if (plot >= 0) {
@@ -61,7 +59,6 @@ export function target(farm: Farm, now: number, hen: Spot): Target | null {
 		const c = chicken(farm, now);
 		return { kind: 'chicken', action: c === 'hungry' ? 'feed' : c === 'egg' ? 'collect' : 'wait' };
 	}
-	if (farm.horse.x === x && farm.horse.y === y) return { kind: 'horse' };
 
 	const npc = npcAt(x, y);
 	if (npc) return npc.id === 'shopkeeper' ? { kind: 'shop' } : { kind: 'npc', npc };
