@@ -16,7 +16,7 @@ export const STEP: Record<Dir, Spot> = {
 	right: { x: 1, y: 0 }
 };
 
-export type BuildingKind = 'house' | 'stable' | 'coop' | 'stall' | 'well';
+export type BuildingKind = 'house' | 'stable' | 'barn' | 'coop' | 'stall' | 'well';
 export type Building = {
 	id: string;
 	kind: BuildingKind;
@@ -36,14 +36,19 @@ export const BUILDINGS: Building[] = [
 	{ id: 'coop', kind: 'coop', x: 11, y: 9, w: 3, h: 3, color: '#a0522d' },
 	{ id: 'stall', kind: 'stall', x: 25, y: 11, w: 3, h: 2, color: '#e8423f' },
 	{ id: 'well', kind: 'well', x: 17, y: 11, w: 2, h: 2, color: '#8d5527' },
-	{ id: 'stable', kind: 'stable', x: 31, y: 20, w: 6, h: 3, color: '#b03a2e' }
+	{ id: 'stable', kind: 'stable', x: 31, y: 20, w: 6, h: 3, color: '#b03a2e' },
+	{ id: 'barn', kind: 'barn', x: 14, y: 18, w: 5, h: 3, color: '#c0703a' }
 ];
 
 /** The field's nine plots, in the order of Farm.plots. */
 export const PLOTS: Spot[] = [10, 11, 12].flatMap((y) => [4, 5, 6].map((x) => ({ x, y })));
 
+export type Area = { x: number; y: number; w: number; h: number };
+
 /** The chicken wanders inside its pen. */
-export const PEN = { x: 11, y: 12, w: 4, h: 2 };
+export const PEN: Area = { x: 11, y: 12, w: 4, h: 2 };
+/** The cow and sheep wander in the pasture below the barn. */
+export const PASTURE: Area = { x: 14, y: 22, w: 6, h: 5 };
 
 export type Npc = { id: string; x: number; y: number; hair: string; shirt: string; says: string[] };
 
@@ -77,8 +82,8 @@ export const NPCS: Npc[] = [
 	},
 	{
 		id: 'grandpa',
-		x: 14,
-		y: 22,
+		x: 11,
+		y: 20,
 		hair: '#dddddd',
 		shirt: '#4a7fd4',
 		says: ['Ahh, the pond is lovely today.', 'Water your seeds, or they will just sleep!']
@@ -95,13 +100,13 @@ const TREES: Spot[] = [
 	[20, 6],
 	[3, 17],
 	[6, 19],
-	[13, 26],
-	[17, 27],
+	[24, 23],
+	[17, 28],
 	[26, 28],
 	[40, 9],
 	[41, 12],
 	[39, 5],
-	[18, 21],
+	[12, 28],
 	[24, 21],
 	[11, 18],
 	[40, 22],
@@ -147,6 +152,9 @@ function build(): Terrain[][] {
 
 	// Chicken pen below the coop, gate at the bottom.
 	fence(set, 10, 11, 6, 4, [{ x: 12, y: 14 }], true);
+
+	// Pasture below the barn, gate onto the road on the right.
+	fence(set, 13, 21, 8, 7, [{ x: 20, y: 24 }]);
 
 	// Paddock round the stable, gate on the left.
 	fence(set, 29, 19, 10, 10, [{ x: 29, y: 26 }]);

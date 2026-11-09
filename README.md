@@ -1,6 +1,6 @@
 # Crops
 
-A pixel-art farming game for a 6–8 year old, played on a tablet. Walk round the village with the D-pad, plant and water seeds, pick what grows, feed the chicken for eggs, sell it all at the market, chat to the villagers and ride the horse. Nothing ever dies or goes wrong. Arrow keys and Space work on a computer.
+A pixel-art farming game for a 6–8 year old, played on a tablet. Tap to walk round the village and use things: plant and water seeds, pick what grows, feed the chicken, milk the cow, shear the sheep, fish in the pond, help villagers with what they need, sell it all at the market and ride the horse. Nothing ever dies or goes wrong. Arrow keys and Space work on a computer.
 
 Live at https://crops.app.haddow.me. Add it to the home screen to play full screen and offline.
 
