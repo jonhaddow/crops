@@ -1,26 +1,33 @@
 <script lang="ts">
-	import DPad from '#lib/DPad.svelte';
 	import {
+		amount,
 		buy,
+		catchFor,
 		collectEgg,
 		CROP_NAMES,
 		CROPS,
 		feed,
+		feedCow,
+		fulfil,
 		harvest,
+		milk,
 		parseFarm,
 		plant,
 		PRODUCE,
 		rescue,
 		sell,
 		sellPrice,
+		shear,
+		updateRequests,
 		water,
 		type Crop,
 		type Produce
 	} from '#lib/game.ts';
 	import { play } from '#lib/sound.ts';
 	import { World } from '#lib/world/engine.ts';
-	import { label, type Target } from '#lib/world/interact.ts';
-	import { PLOTS, type Dir } from '#lib/world/map.ts';
+	import { facingTile, reachTiles, thingAt } from '#lib/world/interact.ts';
+	import { NPCS, open, PLOTS, type Dir, type Spot } from '#lib/world/map.ts';
+	import { beside, onto } from '#lib/world/path.ts';
 	import { icon, spriteUrl, type Icon } from '#lib/world/sprites.ts';
 	import { onMount } from 'svelte';
 
@@ -28,27 +35,18 @@
 
 	const farm = $state(parseFarm(localStorage.getItem(KEY)));
 	rescue(farm);
+	updateRequests(farm, Date.now());
 	$effect(() => localStorage.setItem(KEY, JSON.stringify(farm)));
 
 	let canvas: HTMLCanvasElement;
 	let world: World;
-	let hint = $state<Target | null>(null);
 	/** What someone's saying: lines shown one at a time. */
 	let dialog = $state<string[] | null>(null);
 	let picking = $state<number | null>(null);
 	let marketOpen = $state(false);
-	/**
-	 * Whether the last tap started on a pop-up's backdrop. A acts on finger
-	 * down, so the click that follows can land on the pop-up it just opened;
-	 * only a tap that starts on the backdrop closes it.
-	 */
-	let backdropDown = false;
-	const backdrop = {
-		onpointerdown: (e: PointerEvent) => (backdropDown = e.target === e.currentTarget),
-		onclick: (e: MouseEvent) => {
-			if (backdropDown && e.target === e.currentTarget) closeAll();
-		}
-	};
+	/** Fishing: waiting for a bite, or a fish is biting (tap now!). */
+	let fishing = $state<'wait' | 'bite' | null>(null);
+	let fishTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const busy = $derived(dialog !== null || picking !== null || marketOpen);
 	$effect(() => {
@@ -60,27 +58,20 @@
 		return (urls[name] ??= spriteUrl(icon(name)));
 	}
 
-	function steer(dir: Dir | null) {
-		world.held = dir;
-	}
-
-	function refresh() {
-		hint = world.target(Date.now());
-	}
-
 	onMount(() => {
-		world = new World(canvas, farm, refresh);
+		world = new World(canvas, farm, () => {});
 		world.resize();
 		world.start();
-		refresh();
 		const observer = new ResizeObserver(() => world.resize());
 		observer.observe(canvas);
-		// Crops ripen and eggs get laid without the player moving.
-		const timer = setInterval(refresh, 300);
+		// Villagers think of new things to ask for.
+		const timer = setInterval(() => updateRequests(farm, Date.now()), 1000);
+		if (import.meta.env.DEV) (window as unknown as { world: World }).world = world;
 		return () => {
 			world.stop();
 			observer.disconnect();
 			clearInterval(timer);
+			clearTimeout(fishTimer);
 		};
 	});
 
@@ -89,13 +80,29 @@
 		play('talk');
 	}
 
-	function pressA() {
-		if (dialog) {
-			dialog = dialog.length > 1 ? dialog.slice(1) : null;
-			if (dialog) play('talk');
-			return;
-		}
+	function nextLine() {
+		dialog = dialog && dialog.length > 1 ? dialog.slice(1) : null;
+		if (dialog) play('talk');
+	}
+
+	/** A tap on the world: walk there, or walk up to what was tapped and use it. */
+	function tap(e: MouseEvent) {
+		if (dialog) return nextLine();
+		if (fishing) return reel();
 		if (busy) return;
+		const tile = world.tileAt(e.clientX, e.clientY);
+		const p = farm.player;
+		if (tile.x === p.x && tile.y === p.y) return;
+		const thing = thingAt(farm, tile.x, tile.y, Date.now(), world.animals());
+		const goal = thing || !open(tile.x, tile.y) ? beside(reachTiles(tile.x, tile.y)) : onto(tile);
+		const go = () => world.walkTo(goal, tile, thing ? act : undefined);
+		// A horse can't go everywhere (not onto the crops): hop off and walk.
+		if (go() || (farm.riding && world.dismount() && go())) play('step');
+		else play('nope');
+	}
+
+	/** Uses whatever's in front of the player. */
+	function act() {
 		const now = Date.now();
 		const t = world.target(now);
 		if (!t) return;
@@ -122,50 +129,128 @@
 				} else if (t.action === 'collect') {
 					collectEgg(farm, now);
 					play('pop');
-					world.float(world.henSpot(), 'egg', '+1');
+					world.float(world.animals().chicken, 'egg', '+1');
 				} else play('cluck');
+				break;
+			case 'cow':
+				if (t.action === 'feed') {
+					feedCow(farm, now);
+					play('moo');
+				} else if (t.action === 'milk') {
+					milk(farm, now);
+					play('pop');
+					world.float(world.animals().cow, 'milk', '+1');
+				} else play('moo');
+				break;
+			case 'sheep':
+				if (t.action === 'shear') {
+					shear(farm, now);
+					play('pop');
+					world.float(world.animals().sheep, 'wool', '+1');
+				} else play('baa');
 				break;
 			case 'horse':
 				world.mount();
 				play('neigh');
 				break;
-			case 'dismount':
-				if (!world.dismount()) play('nope');
-				break;
 			case 'npc':
-				world.faceNpc(t.npc.id);
-				say(...t.npc.says);
+				talk(t.npc.id, now);
 				break;
 			case 'shop':
 				world.faceNpc('shopkeeper');
 				marketOpen = true;
 				play('talk');
 				break;
-			case 'well':
-				say('You drop a coin-shaped pebble in the well...', 'Plop! You make a wish.');
+			case 'water':
+				startFishing();
 				break;
-			case 'home':
-				say('Home sweet home!', 'Your farm saves all by itself.');
-				break;
-			case 'house':
-				say('Knock knock!', "Nobody's home right now.");
-				break;
-			case 'stable':
-				say('The stable smells of hay.', 'Your horse is out in the paddock.');
+			case 'building':
+				say(...(LOOKS[t.id] ?? LOOKS.house));
 				break;
 		}
-		refresh();
+	}
+
+	const LOOKS: Record<string, string[]> = {
+		home: ['Home sweet home!', 'Your farm saves all by itself.'],
+		house: ['Knock knock!', "Nobody's home right now."],
+		well: ['You drop a pebble in the well...', 'Plop! You make a wish.'],
+		stable: ['The stable smells of hay.', 'Your horse is out in the paddock.'],
+		barn: ['Moo! Baa!', 'The cow and sheep live here.']
+	};
+
+	/** A villager: hands over what they asked for, or says what they'd like. */
+	function talk(id: string, now: number) {
+		world.faceNpc(id);
+		const npc = NPCS.find((n) => n.id === id)!;
+		const req = farm.requests[id];
+		if (!req) return say(...npc.says);
+		const reward = fulfil(farm, id, now);
+		if (reward) {
+			play('coin');
+			world.float(npc, 'coin', `+${reward}`);
+			say(`${amount(req.item, req.count)}! Thank you!`, `Here are ${reward} coins.`);
+		} else {
+			say(
+				`Could you bring me ${amount(req.item, req.count)}?`,
+				`I'll give you ${req.reward} coins!`
+			);
+		}
+	}
+
+	function startFishing() {
+		const s = world.target(Date.now());
+		if (s?.kind !== 'water') return;
+		world.fishing = { tile: facingTile(farm), bite: false };
+		play('water');
+		waitForBite();
+	}
+
+	function waitForBite() {
+		fishing = 'wait';
+		if (world.fishing) world.fishing.bite = false;
+		clearTimeout(fishTimer);
+		fishTimer = setTimeout(
+			() => {
+				fishing = 'bite';
+				if (world.fishing) world.fishing.bite = true;
+				play('splash');
+				// Too slow: it gets away, and another comes along.
+				fishTimer = setTimeout(waitForBite, 1500);
+			},
+			2000 + Math.random() * 3000
+		);
+	}
+
+	function reel() {
+		if (fishing === 'wait') {
+			// Too soon: the fish swims off, and you wait again.
+			play('nope');
+			waitForBite();
+			return;
+		}
+		const caught = catchFor(Math.random());
+		farm.basket[caught]++;
+		const at: Spot = world.fishing?.tile ?? farm.player;
+		stopFishing();
+		play('pop');
+		world.float(at, caught, '+1');
+		if (caught === 'goldfish') say('Wow, a golden fish!', 'They are very rare.');
+		if (caught === 'boot') say('An old boot!', 'Well, somebody might buy it...');
+	}
+
+	function stopFishing() {
+		clearTimeout(fishTimer);
+		fishing = null;
+		world.fishing = null;
 	}
 
 	function pick(crop: Crop) {
 		if (picking !== null && plant(farm, picking, crop)) play('plant');
 		picking = null;
-		refresh();
 	}
 
 	function sellOne(item: Produce) {
-		if (!sell(farm, item)) return;
-		play('coin');
+		if (sell(farm, item)) play('coin');
 	}
 
 	function buyOne(crop: Crop) {
@@ -178,10 +263,9 @@
 		marketOpen = false;
 		dialog = null;
 		rescue(farm);
-		refresh();
 	}
 
-	// Keyboard too: arrows or WASD, and Space, Enter or Z for A.
+	// Keyboard too: arrows or WASD to walk, Space or Enter to use what's in front.
 	const KEYS: Record<string, Dir> = {
 		ArrowUp: 'up',
 		ArrowDown: 'down',
@@ -196,20 +280,30 @@
 	function keydown(e: KeyboardEvent) {
 		const dir = KEYS[e.key];
 		if (dir) {
+			if (fishing) stopFishing();
+			world.cancelWalk();
 			world.held = dir;
 			e.preventDefault();
-		} else if (e.key === ' ' || e.key === 'Enter' || e.key === 'z') {
-			if (!e.repeat) pressA();
+		} else if (e.key === ' ' || e.key === 'Enter') {
 			e.preventDefault();
-		} else if (e.key === 'Escape') closeAll();
+			if (e.repeat) return;
+			if (dialog) nextLine();
+			else if (fishing) reel();
+			else if (busy) return;
+			else if (world.target(Date.now())) act();
+			else if (farm.riding) world.dismount();
+		} else if (e.key === 'Escape') {
+			closeAll();
+			if (fishing) stopFishing();
+		}
 	}
 
 	function keyup(e: KeyboardEvent) {
 		if (KEYS[e.key] === world.held) world.held = null;
 	}
 
+	const basketItems = $derived(PRODUCE.filter((p) => farm.basket[p] > 0));
 	const noSeeds = $derived(CROP_NAMES.every((c) => farm.seeds[c] === 0));
-	const aLabel = $derived(dialog ? 'Next' : label(hint));
 </script>
 
 <svelte:window onkeydown={keydown} onkeyup={keyup} />
@@ -221,6 +315,7 @@
 	data-y={farm.player.y}
 	data-facing={farm.player.facing}
 	data-riding={farm.riding}
+	onclick={tap}
 ></canvas>
 
 <div class="hud">
@@ -229,40 +324,37 @@
 		<span class="num" data-testid="coins">{farm.coins}</span>
 	</div>
 	<div class="panel basket" aria-label="Basket">
-		{#each PRODUCE as item (item)}
-			<span class="item" class:none={farm.basket[item] === 0}>
+		{#each basketItems as item (item)}
+			<span class="item">
 				<img src={img(item)} alt="" />
 				<span class="num" data-testid="basket-{item}">{farm.basket[item]}</span>
 			</span>
+		{:else}
+			<span class="empty">Basket empty</span>
 		{/each}
 	</div>
 </div>
 
-<div class="controls">
-	<DPad onchange={steer} />
-	<div class="a-wrap">
-		{#if aLabel}<div class="a-label" data-testid="a-label">{aLabel}</div>{/if}
-		<button
-			class="a"
-			class:idle={!aLabel}
-			aria-label="A"
-			onpointerdown={(e) => {
-				e.preventDefault();
-				pressA();
-			}}>A</button
-		>
+{#if fishing}
+	<div class="fishing panel" class:bite={fishing === 'bite'}>
+		<span data-testid="fishing">{fishing === 'bite' ? 'Tap now!' : 'Wait for the splash...'}</span>
+		<button class="stop" onclick={stopFishing}>Stop</button>
 	</div>
-</div>
+{/if}
+
+{#if farm.riding && !busy && !fishing}
+	<button class="hop" onclick={() => world.dismount()}>Hop off</button>
+{/if}
 
 {#if dialog}
-	<button class="dialog" onclick={pressA}>
+	<button class="dialog" onclick={nextLine}>
 		<span>{dialog[0]}</span>
 		<span class="more">▼</span>
 	</button>
 {/if}
 
 {#if picking !== null}
-	<div class="overlay" role="presentation" {...backdrop}>
+	<div class="overlay" role="presentation" onclick={closeAll}>
 		<div
 			class="card"
 			role="dialog"
@@ -293,7 +385,7 @@
 {/if}
 
 {#if marketOpen}
-	<div class="overlay" role="presentation" {...backdrop}>
+	<div class="overlay" role="presentation" onclick={closeAll}>
 		<div
 			class="card market"
 			role="dialog"
@@ -310,19 +402,16 @@
 
 			<h2>Sell</h2>
 			<div class="rows">
-				{#each PRODUCE as item (item)}
-					<button
-						class="row"
-						disabled={farm.basket[item] === 0}
-						aria-label="Sell {item}"
-						onclick={() => sellOne(item)}
-					>
+				{#each basketItems as item (item)}
+					<button class="row" aria-label="Sell {item}" onclick={() => sellOne(item)}>
 						<img class="big" src={img(item)} alt="" />
 						<span class="num">×{farm.basket[item]}</span>
 						<span class="price"
 							><img src={img('coin')} alt="" /><span class="num">{sellPrice(item)}</span></span
 						>
 					</button>
+				{:else}
+					<p class="nothing">Nothing to sell yet.</p>
 				{/each}
 			</div>
 
@@ -355,6 +444,7 @@
 		width: 100%;
 		height: 100%;
 		display: block;
+		touch-action: manipulation;
 	}
 
 	img {
@@ -393,6 +483,9 @@
 
 	.basket {
 		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		max-width: 60vw;
 		gap: 0.8rem;
 		padding: 0.3rem 0.8rem;
 		font-size: 1.6rem;
@@ -405,54 +498,42 @@
 		gap: 0.2rem;
 	}
 
-	.item.none {
-		opacity: 0.4;
+	.empty {
+		font-size: 1.2rem;
+		padding: 0.3rem 0;
 	}
 
-	.controls {
+	/* Fishing: what to do, along the top. */
+	.fishing {
 		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
+		top: max(5rem, calc(env(safe-area-inset-top) + 4rem));
+		left: 50%;
+		translate: -50% 0;
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-end;
-		padding: 0 max(1.2rem, env(safe-area-inset-right)) max(1.2rem, env(safe-area-inset-bottom))
-			max(1.2rem, env(safe-area-inset-left));
-		pointer-events: none;
+		align-items: center;
+		gap: 1rem;
+		padding: 0.4rem 0.6rem 0.4rem 1.2rem;
+		font-size: 1.7rem;
 	}
 
-	.controls > :global(*) {
-		pointer-events: auto;
+	.fishing.bite {
+		background: var(--sun-light);
+		animation: shake 0.2s infinite;
 	}
 
-	.a-wrap {
-		display: grid;
-		justify-items: center;
-		gap: 0.5rem;
+	.stop {
+		padding: 0.2rem 0.8rem;
+		font-size: 1.3rem;
 	}
 
-	.a {
-		--s: min(20vmin, 8rem);
-		width: var(--s);
-		height: var(--s);
-		border-radius: 50%;
+	.hop {
+		position: fixed;
+		right: max(1.2rem, env(safe-area-inset-right));
+		bottom: max(1.2rem, env(safe-area-inset-bottom));
+		padding: 0.8rem 1.6rem;
+		font-size: 1.8rem;
 		background: #d9413d;
 		color: #fff;
-		font-size: 2.6rem;
-		touch-action: none;
-	}
-
-	.a.idle {
-		background: #a0605e;
-	}
-
-	.a-label {
-		padding: 0.1rem 0.8rem;
-		background: var(--card);
-		border: var(--outline);
-		border-radius: 6px;
-		font-size: 1.5rem;
 	}
 
 	/* What people say: a text box along the bottom. */
@@ -461,7 +542,7 @@
 		left: 50%;
 		translate: -50% 0;
 		bottom: max(1.2rem, env(safe-area-inset-bottom));
-		width: min(60vw, 40rem);
+		width: min(90vw, 40rem);
 		min-height: 6rem;
 		padding: 1rem 1.4rem;
 		display: flex;
@@ -471,7 +552,6 @@
 		text-align: left;
 		font-size: 1.7rem;
 		line-height: 1.25;
-		border-radius: 6px;
 	}
 
 	.more {
@@ -506,6 +586,11 @@
 	p {
 		font-size: 1.4rem;
 		margin: 1.2rem 0 0;
+	}
+
+	.nothing {
+		grid-column: 1 / -1;
+		margin: 0;
 	}
 
 	.packets {
@@ -611,16 +696,18 @@
 		height: 2.6rem;
 	}
 
-	@media (orientation: portrait) {
-		.basket {
-			flex-direction: column;
-			gap: 0.3rem;
-		}
-	}
-
 	@keyframes blink {
 		50% {
 			opacity: 0;
+		}
+	}
+
+	@keyframes shake {
+		25% {
+			translate: -52% 0;
+		}
+		75% {
+			translate: -48% 0;
 		}
 	}
 </style>

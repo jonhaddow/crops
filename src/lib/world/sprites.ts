@@ -57,7 +57,13 @@ export const C = {
 	glass: '#8fd3f4',
 	stone: '#a3a8ad',
 	stoneDark: '#777d83',
-	straw: '#f2c56b'
+	straw: '#f2c56b',
+	pink: '#f4a6c8',
+	pinkDark: '#d9799f',
+	udder: '#f4a6b8',
+	patch: '#3a3a3a',
+	fleece: '#f4f1ea',
+	shorn: '#ead7c8'
 };
 
 type Rect = (x: number, y: number, w: number, h: number, color: string) => void;
@@ -269,8 +275,71 @@ export function chicken(pecking: boolean): Sprite {
 	);
 }
 
+/** The cow, 25×16, facing right (mirrored for left). Head down while eating. */
+export function cow(eating: boolean): Sprite {
+	return cached(`cow:${eating}`, () =>
+		make(25, 16, (r) => {
+			for (const x of [4, 8, 15, 18]) {
+				r(x, 11, 2, 5, C.white);
+				r(x, 15, 2, 1, C.ink);
+			}
+			r(0, 4, 2, 6, C.white);
+			r(0, 9, 2, 2, C.patch);
+			r(2, 4, 18, 8, C.white);
+			r(5, 5, 5, 4, C.patch);
+			r(13, 7, 4, 4, C.patch);
+			r(12, 11, 4, 2, C.udder);
+			const y = eating ? 4 : 1;
+			r(19, y, 5, 6, C.white);
+			r(20, y + 4, 5, 3, C.udder);
+			r(21, y + 2, 1, 1, C.ink);
+			r(18, y + 1, 1, 2, C.patch);
+			r(19, y - 1, 1, 1, C.cream);
+			r(23, y - 1, 1, 1, C.cream);
+		})
+	);
+}
+
+/** The sheep, 18×14, facing right; fluffy, or thin after shearing. */
+export function sheep(woolly: boolean): Sprite {
+	return cached(`sheep:${woolly}`, () =>
+		make(18, 14, (r) => {
+			r(4, 10, 2, 4, C.patch);
+			r(11, 10, 2, 4, C.patch);
+			if (woolly) {
+				r(1, 2, 14, 9, C.fleece);
+				r(2, 1, 4, 1, C.fleece);
+				r(8, 1, 4, 1, C.fleece);
+				r(0, 4, 1, 5, C.fleece);
+				r(4, 4, 2, 1, C.wallShade);
+				r(9, 7, 2, 1, C.wallShade);
+			} else {
+				r(3, 4, 11, 6, C.shorn);
+			}
+			r(13, 3, 5, 6, C.patch);
+			r(15, 4, 1, 1, C.white);
+			r(12, 3, 2, 1, C.patch);
+		})
+	);
+}
+
 export type Icon =
-	'carrot' | 'strawberry' | 'pumpkin' | 'egg' | 'coin' | 'drop' | 'grain' | 'seed' | 'sprout';
+	| 'carrot'
+	| 'strawberry'
+	| 'pumpkin'
+	| 'egg'
+	| 'coin'
+	| 'drop'
+	| 'grain'
+	| 'seed'
+	| 'sprout'
+	| 'milk'
+	| 'wool'
+	| 'fish'
+	| 'bigfish'
+	| 'goldfish'
+	| 'boot'
+	| 'hay';
 
 /** Small 16×16 pictures, used in the world and (as images) in menus. */
 export function icon(name: Icon): Sprite {
@@ -355,6 +424,48 @@ export function icon(name: Icon): Sprite {
 					r(3, 6, 4, 3, C.leafLight);
 					r(9, 5, 4, 3, C.leaf);
 					return;
+				case 'milk':
+					r(6, 1, 4, 2, C.berry);
+					r(6, 3, 4, 2, C.white);
+					r(4, 5, 8, 10, C.white);
+					r(4, 8, 8, 3, C.glass);
+					return;
+				case 'wool':
+					disc(r, 8, 8, 6, C.pink);
+					r(4, 6, 8, 1, C.pinkDark);
+					r(3, 9, 10, 1, C.pinkDark);
+					r(6, 3, 1, 10, C.pinkDark);
+					r(12, 13, 3, 1, C.pink);
+					return;
+				case 'fish':
+				case 'bigfish':
+				case 'goldfish': {
+					const c = name === 'fish' ? '#5aa7e0' : name === 'bigfish' ? '#5cb85c' : C.coin;
+					const big = name === 'bigfish';
+					r(big ? 1 : 3, big ? 4 : 6, big ? 11 : 9, big ? 8 : 5, c);
+					r(big ? 2 : 4, big ? 3 : 5, big ? 9 : 7, big ? 10 : 7, c);
+					r(12, 7, 2, 3, c);
+					r(14, big ? 3 : 5, 2, big ? 11 : 7, c);
+					r(big ? 3 : 5, big ? 6 : 7, 1, 1, C.ink);
+					r(7, big ? 2 : 4, 3, 1, shade(c, -0.25));
+					if (name === 'goldfish') {
+						r(9, 7, 1, 1, C.white);
+						r(6, 10, 1, 1, C.white);
+					}
+					return;
+				}
+				case 'boot':
+					r(4, 2, 5, 9, '#7a4a2a');
+					r(4, 9, 10, 4, '#7a4a2a');
+					r(4, 13, 10, 1, C.ink);
+					r(5, 4, 3, 1, C.cream);
+					r(5, 6, 3, 1, C.cream);
+					return;
+				case 'hay':
+					r(3, 4, 10, 9, C.straw);
+					for (const x of [4, 7, 10]) r(x, 4, 1, 9, '#c9a13a');
+					r(3, 8, 10, 2, C.woodDark);
+					return;
 			}
 		})
 	);
@@ -410,6 +521,7 @@ export function shade(hex: string, amount: number): string {
 export const ROOF: Record<Building['kind'], number> = {
 	house: 10,
 	stable: 12,
+	barn: 12,
 	coop: 8,
 	stall: 12,
 	well: 14
@@ -442,7 +554,7 @@ export function building(b: Building): Sprite {
 					r(x + 1, top + 41, 12, 1, C.woodLight);
 					r(x + 2, top + 38, 2, 2, C.white);
 				}
-			} else if (b.kind === 'stable') {
+			} else if (b.kind === 'stable' || b.kind === 'barn') {
 				r(4, top + 14, w - 8, h - top - 15, b.color);
 				for (let x = 8; x < w - 4; x += 6) r(x, top + 14, 1, h - top - 15, dark);
 				r(0, 4, w, top + 12, C.woodDark);

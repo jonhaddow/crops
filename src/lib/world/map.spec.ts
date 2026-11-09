@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { newFarm, parseFarm, plant } from '../game.ts';
-import { target } from './interact.ts';
+import { reachTiles, target } from './interact.ts';
+import { beside, onto, route } from './path.ts';
 import {
 	BUILDINGS,
 	H,
 	NPCS,
 	open,
+	PASTURE,
 	PEN,
 	PLOTS,
 	START_HORSE,
@@ -47,10 +49,14 @@ describe('map', () => {
 		for (const p of PLOTS) expect(seen.has(`${p.x},${p.y}`), `plot ${p.x},${p.y}`).toBe(true);
 		for (const n of NPCS) expect(nextTo(seen, n.x, n.y), n.id).toBe(true);
 		for (const b of BUILDINGS) {
-			const front = Array.from({ length: b.w }, (_, i) => seen.has(`${b.x + i},${b.y + b.h}`));
-			expect(front.some(Boolean), b.id).toBe(true);
+			const tiles = reachTiles(b.x, b.y);
+			expect(
+				tiles.some((t) => nextTo(seen, t.x, t.y)),
+				b.id
+			).toBe(true);
 		}
 		expect(seen.has(`${PEN.x},${PEN.y}`)).toBe(true);
+		expect(seen.has(`${PASTURE.x},${PASTURE.y}`)).toBe(true);
 		expect(nextTo(seen, START_HORSE.x, START_HORSE.y)).toBe(true);
 	});
 
@@ -68,7 +74,8 @@ describe('map', () => {
 });
 
 describe('target', () => {
-	const away = { x: 0, y: 0 };
+	const nowhere = { x: 0, y: 0 };
+	const away = { chicken: nowhere, cow: nowhere, sheep: nowhere };
 
 	it('works the plot in front', () => {
 		const farm = newFarm();
@@ -81,15 +88,27 @@ describe('target', () => {
 	it('finds the chicken, the horse, people and the shop', () => {
 		const farm = newFarm();
 		farm.player = { x: 12, y: 13, facing: 'up' };
-		expect(target(farm, 0, { x: 12, y: 12 })).toMatchObject({ kind: 'chicken', action: 'feed' });
+		expect(target(farm, 0, { ...away, chicken: { x: 12, y: 12 } })).toMatchObject({
+			kind: 'chicken',
+			action: 'feed'
+		});
 		farm.player = { x: 33, y: 25, facing: 'right' };
 		expect(target(farm, 0, away)).toEqual({ kind: 'horse' });
 		farm.player = { x: 20, y: 17, facing: 'left' };
 		expect(target(farm, 0, away)).toMatchObject({ kind: 'npc' });
 		farm.player = { x: 26, y: 13, facing: 'up' };
 		expect(target(farm, 0, away)).toEqual({ kind: 'shop' });
-		farm.riding = true;
-		expect(target(farm, 0, away)).toEqual({ kind: 'dismount' });
+		farm.player = { x: 12, y: 24, facing: 'left' };
+		expect(target(farm, 0, away)).toEqual({ kind: 'water' });
+		farm.player = { x: 16, y: 25, facing: 'right' };
+		expect(target(farm, 0, { ...away, cow: { x: 17, y: 25 } })).toMatchObject({
+			kind: 'cow',
+			action: 'feed'
+		});
+		expect(target(farm, 0, { ...away, sheep: { x: 17, y: 25 } })).toMatchObject({
+			kind: 'sheep',
+			action: 'shear'
+		});
 	});
 
 	it('can always ride a horse, even one left on a plot', () => {
@@ -114,9 +133,36 @@ describe('saves', () => {
 	it('upgrades a version 1 save', () => {
 		const v1 = { version: 1, coins: 9, seeds: { carrot: 1 }, plots: [], fedAt: null };
 		const farm = parseFarm(JSON.stringify(v1));
-		expect(farm.version).toBe(2);
+		expect(farm.version).toBe(3);
 		expect(farm.coins).toBe(9);
 		expect(farm.player).toEqual(START_PLAYER);
 		expect(farm.horse).toEqual(START_HORSE);
+	});
+});
+
+describe('route', () => {
+	const walls = (x: number, y: number) => !open(x, y);
+
+	it('walks round the fence into the field and faces the plot', () => {
+		const r = route(START_PLAYER, walls, beside([{ x: 4, y: 12 }]))!;
+		expect(r).not.toBeNull();
+		let x = START_PLAYER.x;
+		let y = START_PLAYER.y;
+		for (const d of r.steps) {
+			x += STEP[d].x;
+			y += STEP[d].y;
+			expect(open(x, y)).toBe(true);
+		}
+		expect(Math.abs(x - 4) + Math.abs(y - 12)).toBe(1);
+		expect({ x: x + STEP[r.face!].x, y: y + STEP[r.face!].y }).toEqual({ x: 4, y: 12 });
+	});
+
+	it('finds the pond shore from the village', () => {
+		const r = route(START_PLAYER, walls, beside(reachTiles(7, 24)));
+		expect(r).not.toBeNull();
+	});
+
+	it('gives up when there is no way', () => {
+		expect(route(START_PLAYER, walls, onto({ x: 0, y: 0 }))).toBeNull();
 	});
 });

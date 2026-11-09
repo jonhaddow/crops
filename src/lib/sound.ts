@@ -42,6 +42,19 @@ const sounds = {
 	neigh: () => {
 		for (let i = 0; i < 5; i++) tone(700 - i * 60 + (i % 2) * 80, i * 0.06, 0.07, 'sawtooth');
 	},
+	step: () => tone(520, 0, 0.04, 'triangle'),
+	moo: () => {
+		tone(140, 0, 0.35, 'sawtooth');
+		tone(120, 0.2, 0.3, 'sawtooth');
+	},
+	baa: () => {
+		for (let i = 0; i < 4; i++) tone(420 + (i % 2) * 30, i * 0.07, 0.07, 'sawtooth');
+	},
+	splash: () => {
+		tone(900, 0, 0.06);
+		tone(1200, 0.05, 0.06);
+		tone(700, 0.1, 0.1);
+	},
 	nope: () => tone(180, 0, 0.15, 'triangle')
 };
 

@@ -1,34 +1,46 @@
-// The village, running: tile-by-tile movement, the camera, the wandering
-// chicken, riding, and drawing each frame. The farm's state lives in `Farm`
-// (saved); everything here that isn't in it (animation, the chicken's spot)
-// is just for show.
-import { chicken as henState, progress, stage, type Farm } from '../game.ts';
-import { facingTile, target, type Target } from './interact.ts';
+// The village, running: walking routes tile by tile, the camera, the
+// wandering animals, riding, fishing, and drawing each frame. The farm's
+// state lives in `Farm` (saved); everything here that isn't in it (animation,
+// where the animals have wandered) is just for show.
+import {
+	chicken as henState,
+	cow as cowState,
+	progress,
+	sheep as sheepState,
+	stage,
+	type Farm
+} from '../game.ts';
+import { target, type Animals, type Thing } from './interact.ts';
 import {
 	BUILDINGS,
 	H,
 	NPCS,
 	open,
+	PASTURE,
 	PEN,
 	plotAt,
 	PLOTS,
 	STEP,
 	TERRAIN,
 	W,
+	type Area,
 	type Dir,
 	type Spot
 } from './map.ts';
+import { route, type Route } from './path.ts';
 import {
 	background,
 	building,
 	C,
 	chicken,
+	cow,
 	growing,
 	horse,
 	icon,
 	person,
 	PLAYER_LOOK,
 	ROOF,
+	sheep,
 	TILE,
 	tree,
 	type Icon,
@@ -37,14 +49,68 @@ import {
 
 const WALK_MS = 230;
 const RIDE_MS = 115;
-/** A quick tap on the D-pad just turns; holding longer walks. */
+/** With the keyboard, a quick tap of an arrow just turns; holding walks. */
 const TURN_MS = 90;
 
 type Floater = { x: number; y: number; icon: Icon; text: string; born: number };
 
+/** An animal that wanders about inside an area. */
+class Wanderer {
+	from: Spot | null = null;
+	t = 0;
+	left = false;
+	next = 0;
+	constructor(
+		public x: number,
+		public y: number,
+		private area: Area,
+		private ms: number
+	) {}
+
+	/** Where it's drawn, part way between tiles while moving. */
+	pos(): Spot {
+		if (!this.from) return { x: this.x, y: this.y };
+		return {
+			x: this.from.x + (this.x - this.from.x) * this.t,
+			y: this.from.y + (this.y - this.from.y) * this.t
+		};
+	}
+
+	occupies(x: number, y: number) {
+		return (this.x === x && this.y === y) || (this.from?.x === x && this.from?.y === y);
+	}
+
+	update(dt: number, now: number, stay: boolean, free: (x: number, y: number) => boolean) {
+		if (this.from) {
+			this.t += dt / this.ms;
+			if (this.t >= 1) {
+				this.from = null;
+				this.t = 0;
+			}
+			return;
+		}
+		if (now < this.next) return;
+		this.next = now + 1500 + Math.random() * 2500;
+		if (stay && Math.random() < 0.7) return;
+		const d = (['up', 'down', 'left', 'right'] as Dir[])[Math.floor(Math.random() * 4)];
+		const x = this.x + STEP[d].x;
+		const y = this.y + STEP[d].y;
+		const a = this.area;
+		if (x < a.x || x >= a.x + a.w || y < a.y || y >= a.y + a.h || !free(x, y)) return;
+		if (d === 'left') this.left = true;
+		if (d === 'right') this.left = false;
+		this.from = { x: this.x, y: this.y };
+		this.x = x;
+		this.y = y;
+	}
+}
+
 export class World {
+	/** An arrow key held down (keyboard play). */
 	held: Dir | null = null;
 	paused = false;
+	/** Set while fishing: where the float is, and whether a fish is biting. */
+	fishing: { tile: Spot; bite: boolean } | null = null;
 
 	private ctx: CanvasRenderingContext2D;
 	private bg: HTMLCanvasElement;
@@ -52,7 +118,18 @@ export class World {
 	private t = 0;
 	private steps = 0;
 	private heldSince = 0;
-	private hen = { x: 12, y: 12, from: null as Spot | null, t: 0, left: false, next: 0 };
+	/** The route being walked, where it ends, and what to do on arrival. */
+	private walk: {
+		steps: Dir[];
+		face: Dir | null;
+		goal: (x: number, y: number) => Dir | null | undefined;
+		marker: Spot;
+		arrive?: () => void;
+		retries: number;
+	} | null = null;
+	private hen = new Wanderer(12, 12, PEN, 450);
+	private cow = new Wanderer(15, 24, PASTURE, 700);
+	private sheep = new Wanderer(18, 23, PASTURE, 550);
 	private horseFacing: Dir = 'right';
 	private npcFacing = new Map<string, Dir>();
 	private floaters: Floater[] = [];
@@ -60,6 +137,7 @@ export class World {
 	private last = 0;
 	private scale = 4;
 	private dpr = 1;
+	private cam = { x: 0, y: 0 };
 
 	constructor(
 		private canvas: HTMLCanvasElement,
@@ -96,12 +174,55 @@ export class World {
 		this.scale = short >= 700 ? 4 : short >= 450 ? 3 : 2;
 	}
 
-	henSpot(): Spot {
-		return { x: this.hen.x, y: this.hen.y };
+	/** The map tile under a point on the screen. */
+	tileAt(clientX: number, clientY: number): Spot {
+		const r = this.canvas.getBoundingClientRect();
+		return {
+			x: Math.floor(((clientX - r.left) / this.scale + this.cam.x) / TILE),
+			y: Math.floor(((clientY - r.top) / this.scale + this.cam.y) / TILE)
+		};
 	}
 
-	target(now: number): Target | null {
-		return target(this.farm, now, this.henSpot());
+	/** The middle of a tile on the screen (for tests). */
+	screenOf(x: number, y: number): Spot {
+		const r = this.canvas.getBoundingClientRect();
+		return {
+			x: r.left + ((x + 0.5) * TILE - this.cam.x) * this.scale,
+			y: r.top + ((y + 0.5) * TILE - this.cam.y) * this.scale
+		};
+	}
+
+	animals(): Animals {
+		const s = (w: Wanderer) => ({ x: w.x, y: w.y });
+		return { chicken: s(this.hen), cow: s(this.cow), sheep: s(this.sheep) };
+	}
+
+	target(now: number): Thing | null {
+		return target(this.farm, now, this.animals());
+	}
+
+	/** Whether the player is walking a route or between tiles. */
+	busy() {
+		return !!this.walk || !!this.from;
+	}
+
+	/**
+	 * Walks the shortest way to a goal, then faces as it says and calls
+	 * `arrive`. False (and nothing happens) if there's no way there.
+	 */
+	walkTo(
+		goal: (x: number, y: number) => Dir | null | undefined,
+		marker: Spot,
+		arrive?: () => void
+	): boolean {
+		const r = this.route(goal);
+		if (!r) return false;
+		this.walk = { ...r, goal, marker, arrive, retries: 3 };
+		return true;
+	}
+
+	cancelWalk() {
+		this.walk = null;
 	}
 
 	float(spot: Spot, what: Icon, text: string) {
@@ -139,6 +260,7 @@ export class World {
 			const x = p.x + STEP[d].x;
 			const y = p.y + STEP[d].y;
 			if (this.blocked(x, y)) continue;
+			this.walk = null;
 			this.farm.horse = { x: p.x, y: p.y };
 			this.horseFacing = p.facing;
 			this.farm.riding = false;
@@ -152,14 +274,32 @@ export class World {
 		return false;
 	}
 
+	private route(goal: (x: number, y: number) => Dir | null | undefined): Route | null {
+		return route(this.farm.player, (x, y) => this.blocked(x, y), goal);
+	}
+
 	private blocked(x: number, y: number): boolean {
 		if (!open(x, y)) return true;
 		// Horses stay off the crops.
 		if (this.farm.riding && plotAt(x, y) >= 0) return true;
-		if (x === this.hen.x && y === this.hen.y) return true;
-		if (this.hen.from && x === this.hen.from.x && y === this.hen.from.y) return true;
+		if (this.hen.occupies(x, y) || this.cow.occupies(x, y) || this.sheep.occupies(x, y))
+			return true;
 		const h = this.farm.horse;
 		return !this.farm.riding && x === h.x && y === h.y;
+	}
+
+	/** Takes one step, if the way is clear. */
+	private step(dir: Dir): boolean {
+		const p = this.farm.player;
+		const x = p.x + STEP[dir].x;
+		const y = p.y + STEP[dir].y;
+		p.facing = dir;
+		if (this.blocked(x, y)) return false;
+		this.from = { x: p.x, y: p.y };
+		p.x = x;
+		p.y = y;
+		if (this.farm.riding) this.farm.horse = { x, y };
+		return true;
 	}
 
 	private update(dt: number, now: number) {
@@ -176,63 +316,52 @@ export class World {
 			}
 		}
 
-		if (!this.from && this.held && !this.paused) {
+		if (!this.from && !this.paused && this.walk) this.followRoute();
+		else if (!this.from && this.held && !this.paused) {
 			const dir = this.held;
 			if (p.facing !== dir) {
 				p.facing = dir;
 				this.heldSince = performance.now();
 				this.onMove();
-			} else if (performance.now() - this.heldSince >= TURN_MS) {
-				const x = p.x + STEP[dir].x;
-				const y = p.y + STEP[dir].y;
-				if (!this.blocked(x, y)) {
-					this.from = { x: p.x, y: p.y };
-					p.x = x;
-					p.y = y;
-					if (this.farm.riding) this.farm.horse = { x, y };
-				}
-			}
-		} else if (!this.held) {
-			this.heldSince = 0;
+			} else if (performance.now() - this.heldSince >= TURN_MS) this.step(dir);
 		}
 
-		this.wanderHen(dt, now);
+		const free = (x: number, y: number) =>
+			!(p.x === x && p.y === y) && !(this.from?.x === x && this.from?.y === y);
+		// Animals hold still while the player walks over to use something.
+		if (this.walk?.arrive) return;
+		this.hen.update(dt, now, henState(this.farm, now) === 'eating', free);
+		const animalFree = (x: number, y: number) =>
+			free(x, y) && !this.cow.occupies(x, y) && !this.sheep.occupies(x, y);
+		this.cow.update(dt, now, cowState(this.farm, now) === 'eating', animalFree);
+		this.sheep.update(dt, now, false, animalFree);
 	}
 
-	private wanderHen(dt: number, now: number) {
-		const hen = this.hen;
-		if (hen.from) {
-			hen.t += dt / 450;
-			if (hen.t >= 1) {
-				hen.from = null;
-				hen.t = 0;
+	private followRoute() {
+		const walk = this.walk!;
+		const next = walk.steps[0];
+		if (next) {
+			if (this.step(next)) {
+				walk.steps.shift();
+				return;
 			}
+			// Something wandered into the way: find another way.
+			const r = walk.retries-- > 0 ? this.route(walk.goal) : null;
+			if (r) Object.assign(walk, r);
+			else this.walk = null;
 			return;
 		}
-		if (now < hen.next) return;
-		hen.next = now + 1500 + Math.random() * 2500;
-		// Stays put to eat.
-		if (henState(this.farm, now) === 'eating' && Math.random() < 0.7) return;
-		const dirs: Dir[] = ['up', 'down', 'left', 'right'];
-		const d = dirs[Math.floor(Math.random() * 4)];
-		const x = hen.x + STEP[d].x;
-		const y = hen.y + STEP[d].y;
-		const inPen = x >= PEN.x && x < PEN.x + PEN.w && y >= PEN.y && y < PEN.y + PEN.h;
-		const p = this.farm.player;
-		if (!inPen || (p.x === x && p.y === y) || (this.from && this.from.x === x && this.from.y === y))
-			return;
-		if (d === 'left') hen.left = true;
-		if (d === 'right') hen.left = false;
-		hen.from = { x: hen.x, y: hen.y };
-		hen.x = x;
-		hen.y = y;
+		this.walk = null;
+		if (walk.face) this.farm.player.facing = walk.face;
+		this.onMove();
+		walk.arrive?.();
 	}
 
 	/** Where the player is drawn, part way between tiles while moving. */
 	private playerPos(): Spot {
 		const p = this.farm.player;
 		if (!this.from) return { x: p.x, y: p.y };
-		const t = clamp01(this.t);
+		const t = this.t;
 		return { x: this.from.x + (p.x - this.from.x) * t, y: this.from.y + (p.y - this.from.y) * t };
 	}
 
@@ -244,6 +373,7 @@ export class World {
 		const pos = this.playerPos();
 		const camX = snap(clampCam(pos.x * TILE + 8 - viewW / 2, W * TILE, viewW), s);
 		const camY = snap(clampCam(pos.y * TILE + 8 - viewH / 2, H * TILE, viewH), s);
+		this.cam = { x: camX, y: camY };
 
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.fillStyle = C.leafDark;
@@ -254,6 +384,7 @@ export class World {
 
 		const bob = Math.floor(time / 400) % 2;
 		this.drawPlots(now, bob);
+		if (this.walk) this.drawMarker(this.walk.marker, time);
 
 		// Things that stand up, drawn from the back (top) to the front.
 		const items: { y: number; draw: () => void }[] = [];
@@ -280,25 +411,47 @@ export class World {
 		for (const npc of NPCS) {
 			const dir = this.npcFacing.get(npc.id) ?? 'down';
 			const look = { hair: npc.hair, shirt: npc.shirt, cap: false };
+			const req = this.farm.requests[npc.id];
 			items.push({
 				y: npc.y * TILE + 14,
-				draw: () =>
-					this.blit(person(dir, 0, look), npc.x * TILE - 1, npc.y * TILE - 3, dir === 'left')
+				draw: () => {
+					this.blit(person(dir, 0, look), npc.x * TILE - 1, npc.y * TILE - 3, dir === 'left');
+					if (req) this.bubble(npc.x * TILE + 8, npc.y * TILE - 8 - bob, req.item, req.count);
+				}
 			});
 		}
 
-		const hen = this.hen;
-		const ht = clamp01(hen.t);
-		const hx = hen.from ? hen.from.x + (hen.x - hen.from.x) * ht : hen.x;
-		const hy = hen.from ? hen.from.y + (hen.y - hen.from.y) * ht : hen.y;
+		const hp = this.hen.pos();
 		const hs = henState(this.farm, now);
 		items.push({
-			y: hy * TILE + 13,
+			y: hp.y * TILE + 13,
 			draw: () => {
 				const pecking = hs === 'eating' && Math.floor(time / 300) % 2 === 0;
-				this.blit(chicken(pecking), hx * TILE + 1, hy * TILE + 2, hen.left);
-				if (hs === 'egg') this.blit(icon('egg'), hx * TILE + 9, hy * TILE + 6 - bob, false, 10);
-				if (hs === 'hungry') this.bubble(hx * TILE + 8, hy * TILE - 4 - bob, 'grain');
+				this.blit(chicken(pecking), hp.x * TILE + 1, hp.y * TILE + 2, this.hen.left);
+				if (hs === 'egg') this.blit(icon('egg'), hp.x * TILE + 9, hp.y * TILE + 6 - bob, false, 10);
+				if (hs === 'hungry') this.bubble(hp.x * TILE + 8, hp.y * TILE - 4 - bob, 'grain');
+			}
+		});
+
+		const cp = this.cow.pos();
+		const cs = cowState(this.farm, now);
+		items.push({
+			y: cp.y * TILE + 14,
+			draw: () => {
+				const eating = cs === 'eating' && Math.floor(time / 500) % 2 === 0;
+				this.blit(cow(eating), cp.x * TILE - 4, cp.y * TILE, this.cow.left);
+				if (cs === 'milk') this.bubble(cp.x * TILE + 8, cp.y * TILE - 6 - bob, 'milk');
+				if (cs === 'hungry') this.bubble(cp.x * TILE + 8, cp.y * TILE - 6 - bob, 'hay');
+			}
+		});
+
+		const sp = this.sheep.pos();
+		const woolly = sheepState(this.farm, now) === 'woolly';
+		items.push({
+			y: sp.y * TILE + 14,
+			draw: () => {
+				this.blit(sheep(woolly), sp.x * TILE - 1, sp.y * TILE + 1, this.sheep.left);
+				if (woolly) this.bubble(sp.x * TILE + 8, sp.y * TILE - 6 - bob, 'wool');
 			}
 		});
 
@@ -315,30 +468,20 @@ export class World {
 		items.push({
 			y: pos.y * TILE + 14.5,
 			draw: () => {
-				if (this.farm.riding) {
-					this.drawRider(pos, facing, step);
-				} else {
+				if (this.farm.riding) this.drawRider(pos, facing, step);
+				else
 					this.blit(
 						person(facing, step, PLAYER_LOOK),
 						pos.x * TILE - 1,
 						pos.y * TILE - 3,
 						facing === 'left'
 					);
-				}
+				if (this.fishing) this.drawLine(pos, this.fishing.tile, this.fishing.bite, time);
 			}
 		});
 
 		items.sort((a, b) => a.y - b.y);
 		for (const item of items) item.draw();
-
-		// A blinking frame round whatever A would act on.
-		const t = this.paused || this.from ? null : this.target(now);
-		if (t && t.kind !== 'dismount' && Math.floor(time / 500) % 2 === 0) {
-			const f = facingTile(this.farm);
-			ctx.strokeStyle = C.white;
-			ctx.lineWidth = 1;
-			ctx.strokeRect(f.x * TILE + 0.5, f.y * TILE + 0.5, TILE - 1, TILE - 1);
-		}
 
 		this.drawFloaters();
 	}
@@ -371,6 +514,52 @@ export class World {
 		});
 	}
 
+	/** Corner brackets round where the player is heading. */
+	private drawMarker(m: Spot, time: number) {
+		const { ctx } = this;
+		const x = m.x * TILE;
+		const y = m.y * TILE;
+		const g = Math.floor(time / 250) % 2;
+		ctx.fillStyle = C.white;
+		for (const [cx, cy, sx, sy] of [
+			[x - g, y - g, 1, 1],
+			[x + TILE + g, y - g, -1, 1],
+			[x - g, y + TILE + g, 1, -1],
+			[x + TILE + g, y + TILE + g, -1, -1]
+		]) {
+			ctx.fillRect(sx > 0 ? cx : cx - 4, sy > 0 ? cy : cy - 1, 4, 1);
+			ctx.fillRect(sx > 0 ? cx : cx - 1, sy > 0 ? cy : cy - 4, 1, 4);
+		}
+	}
+
+	/** The fishing line and float; the float dips when a fish bites. */
+	private drawLine(pos: Spot, tile: Spot, bite: boolean, time: number) {
+		const { ctx } = this;
+		const hx = pos.x * TILE + 8 + STEP[this.farm.player.facing].x * 6;
+		const hy = pos.y * TILE + 6;
+		const dip = bite ? (Math.floor(time / 120) % 2) + 1 : Math.floor(time / 700) % 2;
+		const fx = tile.x * TILE + 8;
+		const fy = tile.y * TILE + 8 + dip;
+		ctx.strokeStyle = C.white;
+		ctx.lineWidth = 0.5;
+		ctx.beginPath();
+		ctx.moveTo(hx, hy);
+		ctx.quadraticCurveTo((hx + fx) / 2, Math.min(hy, fy) - 10, fx, fy);
+		ctx.stroke();
+		ctx.fillStyle = C.ink;
+		ctx.fillRect(fx - 3, fy - 3, 6, 6);
+		ctx.fillStyle = C.berry;
+		ctx.fillRect(fx - 2, fy - 2, 4, 2);
+		ctx.fillStyle = C.white;
+		ctx.fillRect(fx - 2, fy, 4, 2);
+		if (bite) {
+			ctx.fillStyle = C.waterLight;
+			ctx.fillRect(fx - 6, fy + 3, 3, 1);
+			ctx.fillRect(fx + 3, fy + 3, 3, 1);
+			this.bubbleText(pos.x * TILE + 8, pos.y * TILE - 8, '!');
+		}
+	}
+
 	private drawHorse(x: number, y: number, dir: Dir, step: number) {
 		const sprite = horse(dir, step);
 		const side = dir === 'left' || dir === 'right';
@@ -399,16 +588,36 @@ export class World {
 		}
 	}
 
-	/** A little white thought bubble with an icon in it. */
-	private bubble(cx: number, cy: number, what: Icon) {
+	/** A little white speech bubble with an icon (and a number) in it. */
+	private bubble(cx: number, cy: number, what: Icon, count?: number) {
+		const wide = count !== undefined;
+		const w = wide ? 23 : 12;
+		const left = cx - w / 2;
+		this.box(left, cy - 7, w, 12);
+		this.blit(icon(what), left + 1, cy - 6, false, 10);
+		if (wide) this.text(String(count), left + 12, cy + 1, 7);
+	}
+
+	private bubbleText(cx: number, cy: number, text: string) {
+		this.box(cx - 5, cy - 7, 10, 12);
+		this.text(text, cx - 3, cy + 2, 8);
+	}
+
+	private box(x: number, y: number, w: number, h: number) {
 		const { ctx } = this;
 		ctx.fillStyle = C.ink;
-		ctx.fillRect(cx - 6, cy - 7, 12, 12);
-		ctx.fillRect(cx - 7, cy - 6, 14, 10);
+		ctx.fillRect(x, y + 1, w, h - 2);
+		ctx.fillRect(x + 1, y, w - 2, h);
 		ctx.fillStyle = C.white;
-		ctx.fillRect(cx - 5, cy - 6, 10, 10);
-		ctx.fillRect(cx - 6, cy - 5, 12, 8);
-		this.blit(icon(what), cx - 5, cy - 6, false, 10);
+		ctx.fillRect(x + 1, y + 2, w - 2, h - 4);
+		ctx.fillRect(x + 2, y + 1, w - 4, h - 2);
+	}
+
+	private text(text: string, x: number, y: number, size: number) {
+		const { ctx } = this;
+		ctx.font = `${size}px "Press Start 2P", monospace`;
+		ctx.fillStyle = C.ink;
+		ctx.fillText(text, x, y);
 	}
 
 	private drawFloaters() {
@@ -445,10 +654,6 @@ export class World {
 		ctx.drawImage(sprite.canvas, 0, 0, w, h);
 		ctx.restore();
 	}
-}
-
-function clamp01(t: number) {
-	return Math.min(1, Math.max(0, t));
 }
 
 /** Keeps the camera on the map, or centres the map if it's smaller than the screen. */
