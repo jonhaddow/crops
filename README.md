@@ -8,8 +8,10 @@ Live at https://crops.app.haddow.me. Add it to the home screen to play full scre
 
 ```
 npm ci
-npm run dev
+npm run dev      # http://localhost:5173
 npm test            # unit (the farm's rules)
 npm run test:e2e    # Playwright, landscape iPad
 npm run check && npm run lint
 ```
+
+Merging to `main` deploys (Cloudflare Workers Builds).
