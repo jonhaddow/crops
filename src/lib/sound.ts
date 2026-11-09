@@ -35,6 +35,13 @@ const sounds = {
 		tone(420, 0, 0.07, 'sawtooth');
 		tone(360, 0.09, 0.07, 'sawtooth');
 	},
+	talk: () => {
+		tone(600, 0, 0.05, 'square');
+		tone(750, 0.05, 0.05, 'square');
+	},
+	neigh: () => {
+		for (let i = 0; i < 5; i++) tone(700 - i * 60 + (i % 2) * 80, i * 0.06, 0.07, 'sawtooth');
+	},
 	nope: () => tone(180, 0, 0.15, 'triangle')
 };
 

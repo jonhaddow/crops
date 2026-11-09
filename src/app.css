@@ -1,5 +1,5 @@
-/* Storybook farm: bright sky, green grass, warm soil, thick ink outlines and a
-   chunky rounded display face. Built for small fingers on a tablet. */
+/* Pixel-art village: chunky ink outlines, a pixel display face, and big
+   controls for small fingers on a tablet. */
 :root {
 	--ink: #3b2a1e;
 	--sky: #8fd3f4;
@@ -25,7 +25,10 @@
 	--seed: #e7c48c;
 	--card: #fff8e8;
 
-	--font: 'Baloo 2 Variable', 'Arial Rounded MT Bold', system-ui, sans-serif;
+	--straw-light: #ffe7a8;
+	--font: 'Pixelify Sans Variable', monospace;
+	/* Numbers get a font with clear digits (Pixelify's 5 looks like an S). */
+	--num: 'Press Start 2P', monospace;
 	--outline: 4px solid var(--ink);
 	--lift: 0 6px 0 var(--ink);
 }
@@ -46,7 +49,7 @@ body {
 	font-family: var(--font);
 	font-weight: 700;
 	color: var(--ink);
-	background: linear-gradient(var(--sky) 0, var(--sky-low) 28%, var(--grass) 28%);
+	background: #2f7a2c;
 	/* Taps, not text selection, zooms or long-press menus. */
 	-webkit-user-select: none;
 	user-select: none;
@@ -59,7 +62,7 @@ button {
 	font: inherit;
 	color: inherit;
 	border: var(--outline);
-	border-radius: 22px;
+	border-radius: 6px;
 	background: var(--card);
 	box-shadow: var(--lift);
 	padding: 0;
@@ -83,4 +86,10 @@ button:disabled {
 	*::after {
 		animation: none !important;
 	}
+}
+
+.num {
+	font-family: var(--num);
+	font-size: 0.7em;
+	font-weight: 400;
 }

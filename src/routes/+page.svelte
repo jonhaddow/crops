@@ -1,8 +1,7 @@
 <script lang="ts">
-	import Art from '#lib/Art.svelte';
+	import DPad from '#lib/DPad.svelte';
 	import {
 		buy,
-		chicken,
 		collectEgg,
 		CROP_NAMES,
 		CROPS,
@@ -11,84 +10,162 @@
 		parseFarm,
 		plant,
 		PRODUCE,
-		progress,
 		rescue,
 		sell,
 		sellPrice,
-		stage,
 		water,
 		type Crop,
 		type Produce
 	} from '#lib/game.ts';
 	import { play } from '#lib/sound.ts';
+	import { World } from '#lib/world/engine.ts';
+	import { label, type Target } from '#lib/world/interact.ts';
+	import { PLOTS, type Dir } from '#lib/world/map.ts';
+	import { icon, spriteUrl, type Icon } from '#lib/world/sprites.ts';
+	import { onMount } from 'svelte';
 
 	const KEY = 'crops-farm';
 
 	const farm = $state(parseFarm(localStorage.getItem(KEY)));
 	rescue(farm);
-	let now = $state(Date.now());
-
-	$effect(() => {
-		const timer = setInterval(() => (now = Date.now()), 1000);
-		return () => clearInterval(timer);
-	});
 	$effect(() => localStorage.setItem(KEY, JSON.stringify(farm)));
 
-	/** The plot whose seed picker is open. */
+	let canvas: HTMLCanvasElement;
+	let world: World;
+	let hint = $state<Target | null>(null);
+	/** What someone's saying: lines shown one at a time. */
+	let dialog = $state<string[] | null>(null);
 	let picking = $state<number | null>(null);
 	let marketOpen = $state(false);
-	let wiggle = $state<number | null>(null);
+	/**
+	 * Whether the last tap started on a pop-up's backdrop. A acts on finger
+	 * down, so the click that follows can land on the pop-up it just opened;
+	 * only a tap that starts on the backdrop closes it.
+	 */
+	let backdropDown = false;
+	const backdrop = {
+		onpointerdown: (e: PointerEvent) => (backdropDown = e.target === e.currentTarget),
+		onclick: (e: MouseEvent) => {
+			if (backdropDown && e.target === e.currentTarget) closeAll();
+		}
+	};
 
-	type Floater = { id: number; x: number; y: number; art: Produce | 'coin'; text: string };
-	let floaters = $state<Floater[]>([]);
-	let nextId = 0;
+	const busy = $derived(dialog !== null || picking !== null || marketOpen);
+	$effect(() => {
+		if (world) world.paused = busy;
+	});
 
-	function float(e: MouseEvent, art: Floater['art'], text: string) {
-		const id = nextId++;
-		floaters.push({ id, x: e.clientX, y: e.clientY, art, text });
-		setTimeout(() => (floaters = floaters.filter((f) => f.id !== id)), 1000);
+	const urls: Partial<Record<Icon, string>> = {};
+	function img(name: Icon) {
+		return (urls[name] ??= spriteUrl(icon(name)));
 	}
 
-	function tapPlot(i: number, e: MouseEvent) {
-		now = Date.now();
-		const s = stage(farm.plots[i], now);
-		if (s === 'empty') {
-			picking = i;
-		} else if (s === 'thirsty') {
-			water(farm, i, now);
-			play('water');
-		} else if (s === 'ripe') {
-			const crop = harvest(farm, i, now);
-			if (crop) {
-				play('pop');
-				float(e, crop, '+1');
-			}
-		} else {
-			// Still growing: a wiggle says "not yet".
-			wiggle = i;
-			setTimeout(() => (wiggle = null), 400);
+	function steer(dir: Dir | null) {
+		world.held = dir;
+	}
+
+	function refresh() {
+		hint = world.target(Date.now());
+	}
+
+	onMount(() => {
+		world = new World(canvas, farm, refresh);
+		world.resize();
+		world.start();
+		refresh();
+		const observer = new ResizeObserver(() => world.resize());
+		observer.observe(canvas);
+		// Crops ripen and eggs get laid without the player moving.
+		const timer = setInterval(refresh, 300);
+		return () => {
+			world.stop();
+			observer.disconnect();
+			clearInterval(timer);
+		};
+	});
+
+	function say(...lines: string[]) {
+		dialog = lines;
+		play('talk');
+	}
+
+	function pressA() {
+		if (dialog) {
+			dialog = dialog.length > 1 ? dialog.slice(1) : null;
+			if (dialog) play('talk');
+			return;
 		}
+		if (busy) return;
+		const now = Date.now();
+		const t = world.target(now);
+		if (!t) return;
+		switch (t.kind) {
+			case 'plot': {
+				const spot = PLOTS[t.index];
+				if (t.action === 'plant') picking = t.index;
+				else if (t.action === 'water') {
+					water(farm, t.index, now);
+					play('water');
+				} else if (t.action === 'pick') {
+					const crop = harvest(farm, t.index, now);
+					if (crop) {
+						play('pop');
+						world.float(spot, crop, '+1');
+					}
+				} else play('nope');
+				break;
+			}
+			case 'chicken':
+				if (t.action === 'feed') {
+					feed(farm, now);
+					play('cluck');
+				} else if (t.action === 'collect') {
+					collectEgg(farm, now);
+					play('pop');
+					world.float(world.henSpot(), 'egg', '+1');
+				} else play('cluck');
+				break;
+			case 'horse':
+				world.mount();
+				play('neigh');
+				break;
+			case 'dismount':
+				if (!world.dismount()) play('nope');
+				break;
+			case 'npc':
+				world.faceNpc(t.npc.id);
+				say(...t.npc.says);
+				break;
+			case 'shop':
+				world.faceNpc('shopkeeper');
+				marketOpen = true;
+				play('talk');
+				break;
+			case 'well':
+				say('You drop a coin-shaped pebble in the well...', 'Plop! You make a wish.');
+				break;
+			case 'home':
+				say('Home sweet home!', 'Your farm saves all by itself.');
+				break;
+			case 'house':
+				say('Knock knock!', "Nobody's home right now.");
+				break;
+			case 'stable':
+				say('The stable smells of hay.', 'Your horse is out in the paddock.');
+				break;
+		}
+		refresh();
 	}
 
 	function pick(crop: Crop) {
 		if (picking !== null && plant(farm, picking, crop)) play('plant');
 		picking = null;
+		refresh();
 	}
 
-	function tapChicken(e: MouseEvent) {
-		now = Date.now();
-		if (collectEgg(farm, now)) {
-			play('pop');
-			float(e, 'egg', '+1');
-		} else if (feed(farm, now)) {
-			play('cluck');
-		}
-	}
-
-	function sellOne(item: Produce, e: MouseEvent) {
+	function sellOne(item: Produce) {
 		if (!sell(farm, item)) return;
 		play('coin');
-		float(e, 'coin', `+${sellPrice(item)}`);
 	}
 
 	function buyOne(crop: Crop) {
@@ -96,90 +173,96 @@
 		else play('nope');
 	}
 
-	function closeMarket() {
+	function closeAll() {
+		picking = null;
 		marketOpen = false;
+		dialog = null;
 		rescue(farm);
+		refresh();
 	}
 
-	const hen = $derived(chicken(farm, now));
+	// Keyboard too: arrows or WASD, and Space, Enter or Z for A.
+	const KEYS: Record<string, Dir> = {
+		ArrowUp: 'up',
+		ArrowDown: 'down',
+		ArrowLeft: 'left',
+		ArrowRight: 'right',
+		w: 'up',
+		s: 'down',
+		a: 'left',
+		d: 'right'
+	};
+
+	function keydown(e: KeyboardEvent) {
+		const dir = KEYS[e.key];
+		if (dir) {
+			world.held = dir;
+			e.preventDefault();
+		} else if (e.key === ' ' || e.key === 'Enter' || e.key === 'z') {
+			if (!e.repeat) pressA();
+			e.preventDefault();
+		} else if (e.key === 'Escape') closeAll();
+	}
+
+	function keyup(e: KeyboardEvent) {
+		if (KEYS[e.key] === world.held) world.held = null;
+	}
+
 	const noSeeds = $derived(CROP_NAMES.every((c) => farm.seeds[c] === 0));
+	const aLabel = $derived(dialog ? 'Next' : label(hint));
 </script>
 
-<main>
-	<header>
-		<div class="coins" aria-label="{farm.coins} coins">
-			<Art kind="coin" size="2.6rem" />
-			<span data-testid="coins">{farm.coins}</span>
-		</div>
-		<button class="market-btn" onclick={() => (marketOpen = true)}>
-			<Art kind="stall" size="3.4rem" />
-			<span>Market</span>
-		</button>
-	</header>
+<svelte:window onkeydown={keydown} onkeyup={keyup} />
 
-	<section class="field" aria-label="Field">
-		{#each farm.plots as plot, i (i)}
-			{@const s = stage(plot, now)}
-			<button
-				class="plot {s}"
-				class:wet={plot?.wateredAt != null}
-				class:wiggle={wiggle === i}
-				aria-label={plot ? `${CROPS[plot.crop].name}, ${s}` : 'Empty plot'}
-				onclick={(e) => tapPlot(i, e)}
-			>
-				{#if plot}
-					<div class="plant">
-						{#if s === 'thirsty'}
-							<Art kind="seed" />
-						{:else if s === 'sprout'}
-							<Art kind="sprout" />
-						{:else if s === 'growing'}
-							<Art kind={plot.crop} growing />
-						{:else}
-							<Art kind={plot.crop} />
-						{/if}
-					</div>
-					{#if s === 'thirsty'}
-						<div class="bubble"><Art kind="drop" /></div>
-					{:else if s !== 'ripe'}
-						<div class="bar"><div style="width: {progress(plot, now) * 100}%"></div></div>
-					{/if}
-				{/if}
-			</button>
+<canvas
+	bind:this={canvas}
+	data-testid="world"
+	data-x={farm.player.x}
+	data-y={farm.player.y}
+	data-facing={farm.player.facing}
+	data-riding={farm.riding}
+></canvas>
+
+<div class="hud">
+	<div class="panel coins" aria-label="{farm.coins} coins">
+		<img src={img('coin')} alt="" />
+		<span class="num" data-testid="coins">{farm.coins}</span>
+	</div>
+	<div class="panel basket" aria-label="Basket">
+		{#each PRODUCE as item (item)}
+			<span class="item" class:none={farm.basket[item] === 0}>
+				<img src={img(item)} alt="" />
+				<span class="num" data-testid="basket-{item}">{farm.basket[item]}</span>
+			</span>
 		{/each}
-	</section>
+	</div>
+</div>
 
-	<aside>
-		<button class="coop is-{hen}" aria-label="Chicken, {hen}" onclick={tapChicken}>
-			{#if hen === 'hungry'}
-				<div class="think"><Art kind="grain" /></div>
-			{/if}
-			<div class="hen"><Art kind="chicken" /></div>
-			<div class="nest">
-				<Art kind="nest" />
-				{#if hen === 'egg'}
-					<div class="egg"><Art kind="egg" /></div>
-				{/if}
-			</div>
-			{#if hen === 'eating'}
-				<div class="grain"><Art kind="grain" /></div>
-			{/if}
-		</button>
+<div class="controls">
+	<DPad onchange={steer} />
+	<div class="a-wrap">
+		{#if aLabel}<div class="a-label" data-testid="a-label">{aLabel}</div>{/if}
+		<button
+			class="a"
+			class:idle={!aLabel}
+			aria-label="A"
+			onpointerdown={(e) => {
+				e.preventDefault();
+				pressA();
+			}}>A</button
+		>
+	</div>
+</div>
 
-		<div class="basket" aria-label="Basket">
-			<div class="basket-icon"><Art kind="basket" /></div>
-			{#each PRODUCE as item (item)}
-				<div class="item" class:none={farm.basket[item] === 0}>
-					<Art kind={item} size="2.4rem" />
-					<span data-testid="basket-{item}">{farm.basket[item]}</span>
-				</div>
-			{/each}
-		</div>
-	</aside>
-</main>
+{#if dialog}
+	<button class="dialog" onclick={pressA}>
+		<span>{dialog[0]}</span>
+		<span class="more">▼</span>
+	</button>
+{/if}
 
 {#if picking !== null}
-	<div class="overlay" role="presentation" onclick={() => (picking = null)}>
+	<div class="overlay" role="presentation" {...backdrop}>
 		<div
 			class="card"
 			role="dialog"
@@ -197,28 +280,20 @@
 						aria-label="Plant {CROPS[crop].name}"
 						onclick={() => pick(crop)}
 					>
-						<Art kind={crop} size="5rem" />
-						<span class="count">{farm.seeds[crop]}</span>
+						<img src={img(crop)} alt="" />
+						<span class="count num">{farm.seeds[crop]}</span>
 					</button>
 				{/each}
 			</div>
 			{#if noSeeds}
-				<button
-					class="go-market"
-					onclick={() => {
-						picking = null;
-						marketOpen = true;
-					}}
-				>
-					<Art kind="stall" size="3rem" /> Buy seeds
-				</button>
+				<p>No seeds! Visit the market stall in the village.</p>
 			{/if}
 		</div>
 	</div>
 {/if}
 
 {#if marketOpen}
-	<div class="overlay" role="presentation" onclick={closeMarket}>
+	<div class="overlay" role="presentation" {...backdrop}>
 		<div
 			class="card market"
 			role="dialog"
@@ -227,10 +302,10 @@
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={() => {}}
 		>
-			<button class="close" aria-label="Close" onclick={closeMarket}>✕</button>
-			<div class="coins in-card">
-				<Art kind="coin" size="2.6rem" />
-				<span>{farm.coins}</span>
+			<button class="close" aria-label="Close" onclick={closeAll}>✕</button>
+			<div class="panel coins in-card">
+				<img src={img('coin')} alt="" />
+				<span class="num">{farm.coins}</span>
 			</div>
 
 			<h2>Sell</h2>
@@ -240,11 +315,13 @@
 						class="row"
 						disabled={farm.basket[item] === 0}
 						aria-label="Sell {item}"
-						onclick={(e) => sellOne(item, e)}
+						onclick={() => sellOne(item)}
 					>
-						<Art kind={item} size="3.4rem" />
-						<span class="have">×{farm.basket[item]}</span>
-						<span class="price"><Art kind="coin" size="1.8rem" />{sellPrice(item)}</span>
+						<img class="big" src={img(item)} alt="" />
+						<span class="num">×{farm.basket[item]}</span>
+						<span class="price"
+							><img src={img('coin')} alt="" /><span class="num">{sellPrice(item)}</span></span
+						>
 					</button>
 				{/each}
 			</div>
@@ -253,14 +330,17 @@
 			<div class="rows">
 				{#each CROP_NAMES as crop (crop)}
 					<button
-						class="row seedrow"
+						class="row"
 						disabled={farm.coins < CROPS[crop].seedPrice}
 						aria-label="Buy {crop} seed"
 						onclick={() => buyOne(crop)}
 					>
-						<span class="mini-packet"><Art kind={crop} size="2.8rem" /></span>
-						<span class="have">×{farm.seeds[crop]}</span>
-						<span class="price"><Art kind="coin" size="1.8rem" />{CROPS[crop].seedPrice}</span>
+						<span class="mini-packet"><img src={img(crop)} alt="" /></span>
+						<span class="num">×{farm.seeds[crop]}</span>
+						<span class="price"
+							><img src={img('coin')} alt="" /><span class="num">{CROPS[crop].seedPrice}</span
+							></span
+						>
 					</button>
 				{/each}
 			</div>
@@ -268,251 +348,164 @@
 	</div>
 {/if}
 
-{#each floaters as f (f.id)}
-	<div class="floater" style="left: {f.x}px; top: {f.y}px">
-		<Art kind={f.art} size="3rem" />
-		<span>{f.text}</span>
-	</div>
-{/each}
-
 <style>
-	main {
-		height: 100dvh;
-		display: grid;
-		grid-template:
-			'head head' auto
-			'field side' 1fr / auto 1fr;
-		gap: 2dvh 3vw;
-		padding: max(2dvh, env(safe-area-inset-top)) 3vw 3dvh;
-		align-items: center;
+	canvas {
+		position: fixed;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		display: block;
 	}
 
-	header {
-		grid-area: head;
+	img {
+		image-rendering: pixelated;
+		width: 2rem;
+		height: 2rem;
+	}
+
+	.panel {
+		background: var(--card);
+		border: var(--outline);
+		border-radius: 6px;
+		box-shadow: 0 4px 0 var(--ink);
+	}
+
+	.hud {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: 0;
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
+		align-items: flex-start;
+		padding: max(0.8rem, env(safe-area-inset-top)) 1rem 0;
+		pointer-events: none;
 	}
 
 	.coins {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		background: var(--card);
-		border: var(--outline);
-		border-radius: 999px;
-		padding: 0.25rem 1.4rem 0.25rem 0.4rem;
-		font-size: 2.4rem;
-		line-height: 1;
-	}
-
-	.market-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 1.4rem 0.4rem 0.8rem;
+		gap: 0.4rem;
+		padding: 0.2rem 1rem 0.2rem 0.4rem;
 		font-size: 2rem;
-	}
-
-	/* The field: a 3×3 patch of soil in a wooden frame. */
-	.field {
-		grid-area: field;
-		--size: min(58vw, 100dvh - 9rem);
-		width: var(--size);
-		height: var(--size);
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 3%;
-		padding: 3%;
-		background: var(--wood);
-		border: var(--outline);
-		border-radius: 28px;
-		box-shadow:
-			inset 0 0 0 6px var(--wood-dark),
-			var(--lift);
-	}
-
-	.plot {
-		position: relative;
-		border-radius: 18%;
-		background: repeating-linear-gradient(
-			var(--soil-dry) 0 18%,
-			color-mix(in srgb, var(--soil-dry), var(--ink) 15%) 18% 22%
-		);
-		box-shadow: inset 0 -6px 0 rgb(0 0 0 / 0.15);
-	}
-
-	.plot:active {
-		box-shadow: inset 0 -6px 0 rgb(0 0 0 / 0.15);
-	}
-
-	.plot.wet {
-		background: repeating-linear-gradient(
-			var(--soil-wet) 0 18%,
-			color-mix(in srgb, var(--soil-wet), var(--ink) 25%) 18% 22%
-		);
-	}
-
-	.plant {
-		position: absolute;
-		inset: 10%;
-	}
-
-	.ripe .plant {
-		animation: bob 1.2s ease-in-out infinite;
-	}
-
-	.wiggle .plant {
-		animation: wiggle 0.4s;
-	}
-
-	.bubble {
-		position: absolute;
-		top: -8%;
-		right: -6%;
-		width: 42%;
-		padding: 6%;
-		background: #fff;
-		border: var(--outline);
-		border-radius: 50%;
-		animation: bob 1.4s ease-in-out infinite;
-	}
-
-	.bar {
-		position: absolute;
-		left: 14%;
-		right: 14%;
-		bottom: 7%;
-		height: 9%;
-		background: var(--card);
-		border: 3px solid var(--ink);
-		border-radius: 999px;
-		overflow: hidden;
-	}
-
-	.bar div {
-		height: 100%;
-		background: var(--leaf-light);
-		transition: width 1s linear;
-	}
-
-	aside {
-		grid-area: side;
-		height: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: 3dvh;
-		justify-content: center;
-	}
-
-	/* The coop: chicken, nest and (when hungry) a thought bubble. */
-	.coop {
-		position: relative;
-		flex: 1;
-		max-height: 46dvh;
-		background:
-			linear-gradient(transparent 70%, var(--straw) 70%),
-			repeating-linear-gradient(90deg, var(--wood) 0 30px, var(--wood-dark) 30px 34px);
-		border-radius: 28px 28px 22px 22px;
-	}
-
-	.hen {
-		position: absolute;
-		left: 12%;
-		bottom: 8%;
-		width: 52%;
-	}
-
-	.is-eating .hen {
-		animation: peck 0.6s ease-in-out infinite;
-		transform-origin: 40% 90%;
-	}
-
-	.nest {
-		position: absolute;
-		right: 6%;
-		bottom: 4%;
-		width: 34%;
-	}
-
-	.egg {
-		position: absolute;
-		left: 25%;
-		bottom: 34%;
-		width: 50%;
-		animation: bob 1.2s ease-in-out infinite;
-	}
-
-	.grain {
-		position: absolute;
-		left: 52%;
-		bottom: 4%;
-		width: 14%;
-	}
-
-	.think {
-		position: absolute;
-		left: 46%;
-		top: 6%;
-		width: 22%;
-		padding: 3%;
-		background: #fff;
-		border: var(--outline);
-		border-radius: 50%;
-		animation: bob 1.4s ease-in-out infinite;
+		line-height: 1;
 	}
 
 	.basket {
 		display: flex;
-		align-items: center;
-		justify-content: space-around;
-		gap: 0.4rem;
-		padding: 0.6rem 1rem;
-		background: var(--card);
-		border: var(--outline);
-		border-radius: 22px;
-		font-size: 1.8rem;
-	}
-
-	.basket-icon {
-		width: 3.4rem;
+		gap: 0.8rem;
+		padding: 0.3rem 0.8rem;
+		font-size: 1.6rem;
+		line-height: 1;
 	}
 
 	.item {
 		display: flex;
 		align-items: center;
-		gap: 0.15rem;
+		gap: 0.2rem;
 	}
 
 	.item.none {
-		opacity: 0.35;
+		opacity: 0.4;
 	}
 
-	/* Pop-up cards: the seed picker and the market. */
+	.controls {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-end;
+		padding: 0 max(1.2rem, env(safe-area-inset-right)) max(1.2rem, env(safe-area-inset-bottom))
+			max(1.2rem, env(safe-area-inset-left));
+		pointer-events: none;
+	}
+
+	.controls > :global(*) {
+		pointer-events: auto;
+	}
+
+	.a-wrap {
+		display: grid;
+		justify-items: center;
+		gap: 0.5rem;
+	}
+
+	.a {
+		--s: min(20vmin, 8rem);
+		width: var(--s);
+		height: var(--s);
+		border-radius: 50%;
+		background: #d9413d;
+		color: #fff;
+		font-size: 2.6rem;
+		touch-action: none;
+	}
+
+	.a.idle {
+		background: #a0605e;
+	}
+
+	.a-label {
+		padding: 0.1rem 0.8rem;
+		background: var(--card);
+		border: var(--outline);
+		border-radius: 6px;
+		font-size: 1.5rem;
+	}
+
+	/* What people say: a text box along the bottom. */
+	.dialog {
+		position: fixed;
+		left: 50%;
+		translate: -50% 0;
+		bottom: max(1.2rem, env(safe-area-inset-bottom));
+		width: min(60vw, 40rem);
+		min-height: 6rem;
+		padding: 1rem 1.4rem;
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		text-align: left;
+		font-size: 1.7rem;
+		line-height: 1.25;
+		border-radius: 6px;
+	}
+
+	.more {
+		align-self: flex-end;
+		animation: blink 0.8s steps(1) infinite;
+	}
+
 	.overlay {
 		position: fixed;
 		inset: 0;
 		display: grid;
 		place-items: center;
-		background: rgb(59 42 30 / 0.45);
-		animation: fade 0.15s;
+		background: rgb(30 20 14 / 0.5);
 	}
 
 	.card {
 		position: relative;
 		background: var(--card);
 		border: var(--outline);
-		border-radius: 32px;
-		box-shadow: 0 10px 0 var(--ink);
-		padding: 1.4rem 2rem 2rem;
+		border-radius: 8px;
+		box-shadow: 0 8px 0 var(--ink);
+		padding: 1.2rem 2rem 1.6rem;
 		text-align: center;
-		animation: pop 0.2s;
 	}
 
 	h2 {
 		margin: 0 0 1rem;
-		font-size: 2.2rem;
+		font-size: 2rem;
 		line-height: 1.1;
+	}
+
+	p {
+		font-size: 1.4rem;
+		margin: 1.2rem 0 0;
 	}
 
 	.packets {
@@ -522,67 +515,58 @@
 
 	.packet {
 		position: relative;
-		width: 9rem;
-		height: 11rem;
+		width: 8rem;
+		height: 9.5rem;
 		display: grid;
 		place-items: center;
-		background: linear-gradient(var(--sun-light) 0 70%, var(--straw) 70%);
-		border-radius: 14px;
+		background: linear-gradient(var(--straw-light) 0 70%, var(--straw) 70%);
+	}
+
+	.packet img {
+		width: 4.5rem;
+		height: 4.5rem;
 	}
 
 	.count {
 		position: absolute;
 		right: -0.8rem;
 		top: -0.8rem;
-		min-width: 3rem;
-		height: 3rem;
+		min-width: 2.8rem;
+		height: 2.8rem;
 		display: grid;
 		place-items: center;
 		background: var(--leaf-light);
 		border: var(--outline);
-		border-radius: 999px;
-		font-size: 1.8rem;
-	}
-
-	.go-market {
-		margin-top: 1.4rem;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 1.4rem 0.4rem 0.8rem;
-		font-size: 1.8rem;
+		border-radius: 6px;
+		font-size: 1.6rem;
 	}
 
 	.market {
-		width: min(94vw, 46rem);
+		width: min(94vw, 44rem);
 		max-height: 94dvh;
 		overflow: auto;
 	}
 
 	.close {
 		position: absolute;
-		right: 1rem;
-		top: 1rem;
-		width: 3.6rem;
-		height: 3.6rem;
-		border-radius: 50%;
-		font-size: 1.8rem;
+		right: 0.8rem;
+		top: 0.8rem;
+		width: 3.4rem;
+		height: 3.4rem;
+		font-size: 1.6rem;
 	}
 
-	.coins.in-card {
+	.in-card {
 		position: absolute;
-		left: 1rem;
-		top: 1rem;
-		font-size: 2rem;
-	}
-
-	.market h2 {
-		margin-top: 0.6rem;
+		left: 0.8rem;
+		top: 0.8rem;
+		font-size: 1.7rem;
+		box-shadow: none;
 	}
 
 	.rows {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
 		gap: 1rem;
 		margin-bottom: 1.4rem;
 	}
@@ -591,116 +575,51 @@
 		display: grid;
 		justify-items: center;
 		gap: 0.2rem;
-		padding: 0.6rem 0.4rem 0.4rem;
-		font-size: 1.6rem;
+		padding: 0.6rem 0.4rem 0.5rem;
+		font-size: 1.5rem;
 	}
 
-	.have {
-		line-height: 1;
+	.row img.big {
+		width: 3.2rem;
+		height: 3.2rem;
 	}
 
 	.price {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		padding: 0.1rem 0.8rem 0.1rem 0.3rem;
-		background: var(--sun-light);
+		gap: 0.2rem;
+		padding: 0 0.6rem 0 0.2rem;
+		background: var(--straw-light);
 		border: 3px solid var(--ink);
-		border-radius: 999px;
+		border-radius: 4px;
+	}
+
+	.price img {
+		width: 1.6rem;
+		height: 1.6rem;
 	}
 
 	.mini-packet {
-		padding: 0.3rem;
-		background: linear-gradient(var(--sun-light) 0 70%, var(--straw) 70%);
+		padding: 0.2rem;
+		background: linear-gradient(var(--straw-light) 0 70%, var(--straw) 70%);
 		border: 3px solid var(--ink);
-		border-radius: 8px;
+		border-radius: 4px;
 	}
 
-	.floater {
-		position: fixed;
-		translate: -50% -50%;
-		display: flex;
-		align-items: center;
-		gap: 0.2rem;
-		font-size: 2.4rem;
-		-webkit-text-stroke: 1.5px var(--ink);
-		color: #fff;
-		pointer-events: none;
-		animation: rise 1s ease-out forwards;
+	.mini-packet img {
+		width: 2.6rem;
+		height: 2.6rem;
 	}
 
 	@media (orientation: portrait) {
-		main {
-			grid-template:
-				'head' auto
-				'field' auto
-				'side' 1fr / 1fr;
-			justify-items: center;
-		}
-
-		.field {
-			--size: min(92vw, 58dvh);
-		}
-
-		header,
-		aside {
-			justify-self: stretch;
-		}
-
-		aside {
-			flex-direction: row;
-		}
-
-		.hen {
-			width: 40%;
-		}
-
-		.coop {
-			max-height: none;
-		}
-
 		.basket {
 			flex-direction: column;
-			justify-content: center;
+			gap: 0.3rem;
 		}
 	}
 
-	@keyframes bob {
+	@keyframes blink {
 		50% {
-			translate: 0 -6%;
-		}
-	}
-
-	@keyframes wiggle {
-		25% {
-			rotate: -8deg;
-		}
-		75% {
-			rotate: 8deg;
-		}
-	}
-
-	@keyframes peck {
-		50% {
-			rotate: 14deg;
-		}
-	}
-
-	@keyframes pop {
-		from {
-			scale: 0.8;
-		}
-	}
-
-	@keyframes fade {
-		from {
-			opacity: 0;
-		}
-	}
-
-	@keyframes rise {
-		to {
-			translate: -50% -180%;
 			opacity: 0;
 		}
 	}

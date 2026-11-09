@@ -2,6 +2,8 @@
 // unit tested and saved as JSON. Nothing ever dies or is lost: a plot that
 // isn't watered just waits, and an egg waits in its nest.
 
+import { H, open, START_HORSE, START_PLAYER, W, type Dir, type Spot } from './world/map.ts';
+
 export const CROPS = {
 	carrot: { name: 'Carrot', growMs: 60_000, seedPrice: 1, sellPrice: 2 },
 	strawberry: { name: 'Strawberry', growMs: 3 * 60_000, seedPrice: 2, sellPrice: 4 },
@@ -25,25 +27,33 @@ export function sellPrice(item: Produce): number {
 export type Plot = { crop: Crop; wateredAt: number | null };
 
 export type Farm = {
-	version: 1;
+	version: 2;
 	coins: number;
 	seeds: Record<Crop, number>;
 	basket: Record<Produce, number>;
 	plots: (Plot | null)[];
 	/** When the chicken was last fed; null when it's hungry. */
 	fedAt: number | null;
+	/** Where the player is in the village, and which way they face. */
+	player: Spot & { facing: Dir };
+	riding: boolean;
+	/** Where the horse is when nobody's riding it. */
+	horse: Spot;
 };
 
 export const PLOT_COUNT = 9;
 
 export function newFarm(): Farm {
 	return {
-		version: 1,
+		version: 2,
 		coins: 5,
 		seeds: { carrot: 3, strawberry: 0, pumpkin: 0 },
 		basket: { carrot: 0, strawberry: 0, pumpkin: 0, egg: 0 },
 		plots: Array.from({ length: PLOT_COUNT }, () => null),
-		fedAt: null
+		fedAt: null,
+		player: { ...START_PLAYER },
+		riding: false,
+		horse: { ...START_HORSE }
 	};
 }
 
@@ -137,16 +147,22 @@ export function rescue(farm: Farm): boolean {
 	return true;
 }
 
-/** Reads a saved farm, falling back to a new one if it's missing or broken. */
+/**
+ * Reads a saved farm, falling back to a new one if it's missing or broken.
+ * Version 1 saves (before the village) keep their farm and start at home.
+ */
 export function parseFarm(json: string | null): Farm {
 	if (!json) return newFarm();
 	try {
-		const saved = JSON.parse(json) as Partial<Farm>;
-		if (saved?.version !== 1) return newFarm();
+		const saved = JSON.parse(json) as Omit<Partial<Farm>, 'version'> & { version?: number };
+		if (saved?.version !== 1 && saved?.version !== 2) return newFarm();
 		const fresh = newFarm();
 		const plots = Array.isArray(saved.plots) ? saved.plots : [];
+		const player = spot(saved.player) ?? fresh.player;
+		const facing = saved.player?.facing;
+		const riding = saved.riding === true;
 		return {
-			version: 1,
+			version: 2,
 			coins: num(saved.coins),
 			seeds: counts(fresh.seeds, saved.seeds),
 			basket: counts(fresh.basket, saved.basket),
@@ -156,11 +172,29 @@ export function parseFarm(json: string | null): Farm {
 					? { crop: p.crop, wateredAt: typeof p.wateredAt === 'number' ? p.wateredAt : null }
 					: null;
 			}),
-			fedAt: typeof saved.fedAt === 'number' ? saved.fedAt : null
+			fedAt: typeof saved.fedAt === 'number' ? saved.fedAt : null,
+			player: {
+				x: player.x,
+				y: player.y,
+				facing: facing && facing in DIRS ? facing : 'down'
+			},
+			riding,
+			// While riding, the horse is under the player.
+			horse: riding ? { x: player.x, y: player.y } : (spot(saved.horse) ?? fresh.horse)
 		};
 	} catch {
 		return newFarm();
 	}
+}
+
+const DIRS: Record<Dir, true> = { up: true, down: true, left: true, right: true };
+
+/** A saved position, if it's still somewhere you can stand on the map. */
+function spot(s: unknown): Spot | null {
+	const p = s as Partial<Spot> | null | undefined;
+	if (!p || !Number.isInteger(p.x) || !Number.isInteger(p.y)) return null;
+	const { x, y } = p as Spot;
+	return x >= 0 && y >= 0 && x < W && y < H && open(x, y) ? { x, y } : null;
 }
 
 function num(n: unknown): number {
