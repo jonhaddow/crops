@@ -1,0 +1,52 @@
+{
+	"name": "crops",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "wrangler dev --port 4173",
+		"prepare": "svelte-kit sync && node scripts/gen-types.ts || echo ''",
+		"check": "node scripts/gen-types.ts && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker",
+		"lint": "prettier --check . && eslint .",
+		"format": "prettier --write .",
+		"test:unit": "vitest",
+		"test": "npm run test:unit -- --run",
+		"deploy": "npm run build && npm run deploy:ci",
+		"deploy:ci": "wrangler deploy",
+		"test:e2e": "playwright test"
+	},
+	"imports": {
+		"#lib": "./src/lib/index.ts",
+		"#lib/*": "./src/lib/*"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@playwright/test": "^1.64.0",
+		"@sveltejs/adapter-cloudflare": "^8.0.2",
+		"@sveltejs/kit": "^3.1.1",
+		"@sveltejs/vite-plugin-svelte": "^7.3.1",
+		"@types/node": "^26.6.6",
+		"eslint": "^10.14.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-svelte": "^3.24.1",
+		"globals": "^17.14.0",
+		"prettier": "^3.9.10",
+		"prettier-plugin-svelte": "^4.1.1",
+		"svelte": "^5.57.3",
+		"svelte-check": "^4.7.8",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.72.2",
+		"vite": "^8.3.7",
+		"vitest": "^5.1.0",
+		"wrangler": "^4.159.0"
+	},
+	"dependencies": {
+		"@fontsource-variable/baloo-2": "^5.3.0"
+	},
+	"allowScripts": {
+		"esbuild@0.28.2": true,
+		"workerd@1.20261109.1": true
+	}
+}

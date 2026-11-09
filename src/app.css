@@ -1,0 +1,86 @@
+/* Storybook farm: bright sky, green grass, warm soil, thick ink outlines and a
+   chunky rounded display face. Built for small fingers on a tablet. */
+:root {
+	--ink: #3b2a1e;
+	--sky: #8fd3f4;
+	--sky-low: #d6f1fb;
+	--grass: #7cc75b;
+	--grass-dark: #5aa83e;
+	--soil-dry: #a8714a;
+	--soil-wet: #6b4229;
+	--wood: #b9783f;
+	--wood-dark: #8d5527;
+	--straw: #f2c56b;
+	--leaf: #3f9b3a;
+	--leaf-light: #8fd16a;
+	--carrot: #f5862b;
+	--berry: #e8423f;
+	--berry-light: #f79b8f;
+	--pumpkin: #f39a1d;
+	--pumpkin-light: #f8c15c;
+	--egg: #fbeccf;
+	--sun: #ffc93c;
+	--sun-light: #ffe58a;
+	--water: #49aef0;
+	--seed: #e7c48c;
+	--card: #fff8e8;
+
+	--font: 'Baloo 2 Variable', 'Arial Rounded MT Bold', system-ui, sans-serif;
+	--outline: 4px solid var(--ink);
+	--lift: 0 6px 0 var(--ink);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+
+body {
+	font-family: var(--font);
+	font-weight: 700;
+	color: var(--ink);
+	background: linear-gradient(var(--sky) 0, var(--sky-low) 28%, var(--grass) 28%);
+	/* Taps, not text selection, zooms or long-press menus. */
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+	-webkit-tap-highlight-color: transparent;
+	touch-action: manipulation;
+}
+
+button {
+	font: inherit;
+	color: inherit;
+	border: var(--outline);
+	border-radius: 22px;
+	background: var(--card);
+	box-shadow: var(--lift);
+	padding: 0;
+	cursor: pointer;
+	transition: transform 80ms;
+}
+
+button:active {
+	transform: translateY(4px);
+	box-shadow: 0 2px 0 var(--ink);
+}
+
+button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation: none !important;
+	}
+}
