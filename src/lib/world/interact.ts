@@ -1,16 +1,18 @@
 // What's on a tile, and so what tapping it does: the player walks up to it,
 // faces it, and acts. Pure, so it can be tested.
-import { chicken, cow, sheep, stage, type Farm } from '../game.ts';
+import { chicken, cow, sheep, stage, type Animal, type Farm } from '../game.ts';
 import { buildingAt, npcAt, plotAt, STEP, terrain, type Npc, type Spot } from './map.ts';
 
-/** Where the animals are right now (they wander, so the engine knows). */
-export type Animals = { chicken: Spot; cow: Spot; sheep: Spot };
+/** Where each animal is right now (they wander, so the engine knows). */
+export type Animals = Record<Animal, Spot[]>;
 
 export type Thing =
 	| { kind: 'plot'; index: number; action: 'plant' | 'water' | 'pick' | 'wait' }
-	| { kind: 'chicken'; action: 'feed' | 'collect' | 'wait' }
-	| { kind: 'cow'; action: 'feed' | 'milk' | 'wait' }
-	| { kind: 'sheep'; action: 'shear' | 'wait' }
+	/** Field that's not yours yet: it's for sale at the market. */
+	| { kind: 'land' }
+	| { kind: 'chicken'; index: number; action: 'feed' | 'collect' | 'wait' }
+	| { kind: 'cow'; index: number; action: 'feed' | 'milk' | 'wait' }
+	| { kind: 'sheep'; index: number; action: 'shear' | 'wait' }
 	| { kind: 'horse' }
 	| { kind: 'npc'; npc: Npc }
 	| { kind: 'shop' }
@@ -31,6 +33,7 @@ export function thingAt(
 	if (!farm.riding && at(farm.horse, x, y)) return { kind: 'horse' };
 
 	const plot = plotAt(x, y);
+	if (plot >= farm.plots.length) return { kind: 'land' };
 	if (plot >= 0) {
 		const s = stage(farm.plots[plot], now);
 		const action =
@@ -39,16 +42,33 @@ export function thingAt(
 	}
 
 	const b = buildingAt(x, y);
-	if (at(animals.chicken, x, y) || b?.kind === 'coop') {
-		const c = chicken(farm, now);
-		return { kind: 'chicken', action: c === 'hungry' ? 'feed' : c === 'egg' ? 'collect' : 'wait' };
+	const hen = (i: number) => {
+		const c = chicken(farm, now, i);
+		const action = c === 'hungry' ? 'feed' : c === 'egg' ? 'collect' : 'wait';
+		return { kind: 'chicken', index: i, action } satisfies Thing;
+	};
+	const hens = animals.chicken.findIndex((s) => at(s, x, y));
+	if (hens >= 0) return hen(hens);
+	// The coop sees to whichever hen needs it: eggs first, then the hungry.
+	if (b?.kind === 'coop') {
+		const all = farm.animals.chicken.map((_, i) => hen(i));
+		return (
+			all.find((h) => h.action === 'collect') ?? all.find((h) => h.action === 'feed') ?? all[0]
+		);
 	}
-	if (at(animals.cow, x, y)) {
-		const c = cow(farm, now);
-		return { kind: 'cow', action: c === 'hungry' ? 'feed' : c === 'milk' ? 'milk' : 'wait' };
+	const cows = animals.cow.findIndex((s) => at(s, x, y));
+	if (cows >= 0) {
+		const c = cow(farm, now, cows);
+		const action = c === 'hungry' ? 'feed' : c === 'milk' ? 'milk' : 'wait';
+		return { kind: 'cow', index: cows, action };
 	}
-	if (at(animals.sheep, x, y))
-		return { kind: 'sheep', action: sheep(farm, now) === 'woolly' ? 'shear' : 'wait' };
+	const flock = animals.sheep.findIndex((s) => at(s, x, y));
+	if (flock >= 0)
+		return {
+			kind: 'sheep',
+			index: flock,
+			action: sheep(farm, now, flock) === 'woolly' ? 'shear' : 'wait'
+		};
 
 	const npc = npcAt(x, y);
 	if (npc) return npc.id === 'shopkeeper' ? { kind: 'shop' } : { kind: 'npc', npc };
