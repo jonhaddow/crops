@@ -1,7 +1,11 @@
 <script lang="ts">
 	import {
 		amount,
+		ANIMAL_NAMES,
+		ANIMALS,
 		buy,
+		buyAnimal,
+		buyLand,
 		catchFor,
 		collectEgg,
 		CROP_NAMES,
@@ -11,15 +15,18 @@
 		fulfil,
 		harvest,
 		milk,
+		nextLand,
 		parseFarm,
 		plant,
 		PRODUCE,
 		rescue,
 		sell,
+		sellAnimal,
 		sellPrice,
 		shear,
 		updateRequests,
 		water,
+		type Animal,
 		type Crop,
 		type Produce
 	} from '#lib/game.ts';
@@ -28,7 +35,14 @@
 	import { facingTile, reachTiles, thingAt } from '#lib/world/interact.ts';
 	import { NPCS, open, PLOTS, type Dir, type Spot } from '#lib/world/map.ts';
 	import { beside, onto } from '#lib/world/path.ts';
-	import { icon, spriteUrl, type Icon } from '#lib/world/sprites.ts';
+	import {
+		chicken as chickenSprite,
+		cow as cowSprite,
+		icon,
+		sheep as sheepSprite,
+		spriteUrl,
+		type Icon
+	} from '#lib/world/sprites.ts';
 	import { onMount } from 'svelte';
 
 	const KEY = 'crops-farm';
@@ -49,6 +63,8 @@
 	 * put (greyed out once sold) so repeated taps don't sell the next thing.
 	 */
 	let forSale = $state<Produce[]>([]);
+	/** Likewise for animals: kinds there's more than one of (the last one stays). */
+	let animalsForSale = $state<Animal[]>([]);
 	/** Fishing: waiting for a bite, or a fish is biting (tap now!). */
 	let fishing = $state<'wait' | 'bite' | null>(null);
 	let fishTimer: ReturnType<typeof setTimeout> | undefined;
@@ -62,6 +78,12 @@
 	function img(name: Icon) {
 		return (urls[name] ??= spriteUrl(icon(name)));
 	}
+
+	const animalImg: Record<Animal, string> = {
+		chicken: spriteUrl(chickenSprite(false)),
+		cow: spriteUrl(cowSprite(false)),
+		sheep: spriteUrl(sheepSprite(true))
+	};
 
 	onMount(() => {
 		world = new World(canvas, farm);
@@ -127,31 +149,34 @@
 				} else play('nope');
 				break;
 			}
+			case 'land':
+				say('This land is for sale!', 'Buy it at the market to grow more.');
+				break;
 			case 'chicken':
 				if (t.action === 'feed') {
-					feed(farm, now);
+					feed(farm, now, t.index);
 					play('cluck');
 				} else if (t.action === 'collect') {
-					collectEgg(farm, now);
+					collectEgg(farm, now, t.index);
 					play('pop');
-					world.float(world.animals().chicken, 'egg', '+1');
+					world.float(world.animals().chicken[t.index], 'egg', '+1');
 				} else play('cluck');
 				break;
 			case 'cow':
 				if (t.action === 'feed') {
-					feedCow(farm, now);
+					feedCow(farm, now, t.index);
 					play('moo');
 				} else if (t.action === 'milk') {
-					milk(farm, now);
+					milk(farm, now, t.index);
 					play('pop');
-					world.float(world.animals().cow, 'milk', '+1');
+					world.float(world.animals().cow[t.index], 'milk', '+1');
 				} else play('moo');
 				break;
 			case 'sheep':
 				if (t.action === 'shear') {
-					shear(farm, now);
+					shear(farm, now, t.index);
 					play('pop');
-					world.float(world.animals().sheep, 'wool', '+1');
+					world.float(world.animals().sheep[t.index], 'wool', '+1');
 				} else play('baa');
 				break;
 			case 'horse':
@@ -164,6 +189,7 @@
 			case 'shop':
 				world.faceNpc('shopkeeper');
 				forSale = basketItems;
+				animalsForSale = ANIMAL_NAMES.filter((a) => farm.animals[a].length > 1);
 				marketOpen = true;
 				play('talk');
 				break;
@@ -181,7 +207,7 @@
 		house: ['Knock knock!', "Nobody's home right now."],
 		well: ['You drop a pebble in the well...', 'Plop! You make a wish.'],
 		stable: ['The stable smells of hay.', 'Your horse is out in the paddock.'],
-		barn: ['Moo! Baa!', 'The cow and sheep live here.']
+		barn: ['Moo! Baa!', 'The cows and sheep live here.', 'You can buy more at the market.']
 	};
 
 	/** A villager: hands over what they asked for, or says what they'd like. */
@@ -264,6 +290,21 @@
 		else play('nope');
 	}
 
+	function buyAnimalOne(kind: Animal) {
+		if (buyAnimal(farm, kind)) play(kind === 'chicken' ? 'cluck' : kind === 'cow' ? 'moo' : 'baa');
+		else play('nope');
+	}
+
+	function sellAnimalOne(kind: Animal) {
+		if (sellAnimal(farm, kind, Date.now())) play('coin');
+		else play('nope');
+	}
+
+	function buyLandOne() {
+		if (buyLand(farm)) play('plant');
+		else play('nope');
+	}
+
 	function closeAll() {
 		picking = null;
 		marketOpen = false;
@@ -310,6 +351,7 @@
 
 	const basketItems = $derived(PRODUCE.filter((p) => farm.basket[p] > 0));
 	const noSeeds = $derived(CROP_NAMES.every((c) => farm.seeds[c] === 0));
+	const land = $derived(nextLand(farm));
 </script>
 
 <svelte:window onkeydown={keydown} onkeyup={keyup} />
@@ -421,9 +463,25 @@
 							><img src={img('coin')} alt="" /><span class="num">{sellPrice(item)}</span></span
 						>
 					</button>
-				{:else}
-					<p class="nothing">Nothing to sell yet.</p>
 				{/each}
+				{#each animalsForSale as kind (kind)}
+					<button
+						class="row"
+						disabled={farm.animals[kind].length <= 1}
+						aria-label="Sell a {kind}"
+						onclick={() => sellAnimalOne(kind)}
+					>
+						<img class="big" src={animalImg[kind]} alt="" />
+						<span class="num">×{farm.animals[kind].length}</span>
+						<span class="price"
+							><img src={img('coin')} alt="" /><span class="num">{ANIMALS[kind].sellPrice}</span
+							></span
+						>
+					</button>
+				{/each}
+				{#if !forSale.length && !animalsForSale.length}
+					<p class="nothing">Nothing to sell yet.</p>
+				{/if}
 			</div>
 
 			<h2>Buy seeds</h2>
@@ -443,6 +501,44 @@
 						>
 					</button>
 				{/each}
+			</div>
+
+			<h2>Buy for the farm</h2>
+			<div class="rows">
+				{#each ANIMAL_NAMES as kind (kind)}
+					{@const full = farm.animals[kind].length >= ANIMALS[kind].max}
+					<button
+						class="row"
+						disabled={full || farm.coins < ANIMALS[kind].price}
+						aria-label="Buy a {kind}"
+						onclick={() => buyAnimalOne(kind)}
+					>
+						<img class="big" src={animalImg[kind]} alt="" />
+						<span class="num">×{farm.animals[kind].length}</span>
+						{#if full}
+							<span class="full">Full!</span>
+						{:else}
+							<span class="price"
+								><img src={img('coin')} alt="" /><span class="num">{ANIMALS[kind].price}</span
+								></span
+							>
+						{/if}
+					</button>
+				{/each}
+				{#if land}
+					<button
+						class="row"
+						disabled={farm.coins < land.price}
+						aria-label="Buy land"
+						onclick={buyLandOne}
+					>
+						<span class="mini-land"><img src={img('sprout')} alt="" /></span>
+						<span class="num">+{land.plots - farm.plots.length}</span>
+						<span class="price"
+							><img src={img('coin')} alt="" /><span class="num">{land.price}</span></span
+						>
+					</button>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -705,6 +801,23 @@
 	.mini-packet img {
 		width: 2.6rem;
 		height: 2.6rem;
+	}
+
+	.mini-land {
+		padding: 0.2rem;
+		background: var(--soil-dry);
+		border: 3px solid var(--ink);
+		border-radius: 4px;
+	}
+
+	.mini-land img {
+		width: 2.6rem;
+		height: 2.6rem;
+	}
+
+	.full {
+		font-size: 1.2rem;
+		line-height: 1.6rem;
 	}
 
 	@keyframes blink {

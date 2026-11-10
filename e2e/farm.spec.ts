@@ -27,13 +27,17 @@ async function start(page: Page, save: Save) {
 	// Let time run (taps wait on animation frames), jumping ahead where needed.
 	await page.clock.resume();
 	await page.waitForFunction(() => 'world' in window);
+	// The camera finds the player on the first frame: taps before it miss.
+	await page.evaluate(
+		() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+	);
 }
 
 type Spot = { x: number; y: number };
 type WorldHandle = {
 	busy(): boolean;
 	screenOf(x: number, y: number): Spot;
-	animals(): Record<'chicken' | 'cow' | 'sheep', Spot>;
+	animals(): Record<'chicken' | 'cow' | 'sheep', Spot[]>;
 };
 
 /** Taps a map tile on the screen. */
@@ -49,7 +53,7 @@ async function tapTile(page: Page, x: number, y: number) {
 
 async function tapAnimal(page: Page, which: 'chicken' | 'cow' | 'sheep') {
 	const at = await page.evaluate(
-		(w) => (window as unknown as { world: WorldHandle }).world.animals()[w],
+		(w) => (window as unknown as { world: WorldHandle }).world.animals()[w][0],
 		which
 	);
 	await tapTile(page, at.x, at.y);
@@ -127,6 +131,35 @@ test('sell at the market stall and buy seeds; it all survives a reload', async (
 	await page.reload();
 	await expect(page.getByTestId('coins')).toHaveText('6');
 	await expect(world).toHaveAttribute('data-y', y!);
+});
+
+test('buy a cow, more land, and sell a hen', async ({ page }) => {
+	await start(page, {
+		...base,
+		version: 4,
+		coins: 40,
+		plots: Array(12).fill(null),
+		animals: { chicken: [null, null], sheep: [null], cow: [null] },
+		player: { x: 22, y: 15, facing: 'up' }
+	});
+	await tapTile(page, 26, 11);
+	await page.getByRole('button', { name: 'Buy a cow' }).tap();
+	await page.getByRole('button', { name: 'Buy land' }).tap();
+	await page.getByRole('button', { name: 'Sell a chicken' }).tap();
+	await expect(page.getByRole('button', { name: 'Sell a chicken' })).toBeDisabled();
+	await expect(page.getByTestId('coins')).toHaveText(String(40 - 20 - 15 + 5));
+	await page.getByRole('button', { name: 'Close' }).tap();
+	await expect
+		.poll(() =>
+			page.evaluate(() => (window as unknown as { world: WorldHandle }).world.animals().cow.length)
+		)
+		.toBe(2);
+	// The new land can be planted.
+	// (In short hops: a tap has to land on the screen.)
+	await tapTile(page, 17, 15);
+	await tapTile(page, 9, 14);
+	await tapTile(page, 4, 13);
+	await expect(page.getByRole('dialog', { name: 'Plant a seed' })).toBeVisible();
 });
 
 test('ride the horse and hop off', async ({ page }) => {

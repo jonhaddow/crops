@@ -8,6 +8,8 @@ import {
 	progress,
 	sheep as sheepState,
 	stage,
+	ANIMAL_NAMES,
+	type Animal,
 	type Farm
 } from '../game.ts';
 import { target, type Animals, type Thing } from './interact.ts';
@@ -46,6 +48,13 @@ import {
 	type Icon,
 	type Sprite
 } from './sprites.ts';
+
+/** Where each kind of animal lives, where the first one starts, and how fast it ambles. */
+const HERDS: Record<Animal, { area: Area; home: Spot; ms: number }> = {
+	chicken: { area: PEN, home: { x: 12, y: 12 }, ms: 450 },
+	cow: { area: PASTURE, home: { x: 15, y: 24 }, ms: 700 },
+	sheep: { area: PASTURE, home: { x: 18, y: 23 }, ms: 550 }
+};
 
 const WALK_MS = 230;
 const RIDE_MS = 115;
@@ -140,9 +149,8 @@ export class World {
 		arrive?: () => void;
 		retries: number;
 	} | null = null;
-	private hen = new Wanderer(12, 12, PEN, 450);
-	private cow = new Wanderer(15, 24, PASTURE, 700);
-	private sheep = new Wanderer(18, 23, PASTURE, 550);
+	/** The animals wandering about, one per animal on the farm. */
+	private herds: Record<Animal, Wanderer[]> = { chicken: [], cow: [], sheep: [] };
 	private horseFacing: Dir = 'right';
 	private npcFacing = new Map<string, Dir>();
 	private floaters: Floater[] = [];
@@ -205,7 +213,50 @@ export class World {
 
 	animals(): Animals {
 		const s = (w: Wanderer) => ({ x: w.x, y: w.y });
-		return { chicken: s(this.hen), cow: s(this.cow), sheep: s(this.sheep) };
+		return {
+			chicken: this.herds.chicken.map(s),
+			cow: this.herds.cow.map(s),
+			sheep: this.herds.sheep.map(s)
+		};
+	}
+
+	/** Whether any animal is on (or stepping off) a tile. */
+	private animalOn(x: number, y: number) {
+		return ANIMAL_NAMES.some((k) => this.herds[k].some((w) => w.occupies(x, y)));
+	}
+
+	/** Lets bought animals in and sold ones go: one wanderer per animal. */
+	private syncHerds() {
+		for (const kind of ANIMAL_NAMES) {
+			const herd = this.herds[kind];
+			const want = this.farm.animals[kind].length;
+			if (herd.length > want) herd.length = want;
+			while (herd.length < want) {
+				const { area, home, ms } = HERDS[kind];
+				const spot = this.freeSpot(area, herd.length === 0 ? home : null);
+				if (!spot) break;
+				herd.push(new Wanderer(spot.x, spot.y, area, ms));
+			}
+		}
+	}
+
+	/**
+	 * Somewhere free inside an area for a new animal (`home` if free), and not
+	 * by its gate: like Wanderer.byGate, so it never blocks the way in.
+	 */
+	private freeSpot(area: Area, home: Spot | null): Spot | null {
+		const p = this.farm.player;
+		const inside = (x: number, y: number) =>
+			x >= area.x && x < area.x + area.w && y >= area.y && y < area.y + area.h;
+		const byGate = (x: number, y: number) =>
+			Object.values(STEP).some((d) => !inside(x + d.x, y + d.y) && open(x + d.x, y + d.y));
+		const ok = (x: number, y: number) =>
+			open(x, y) && !byGate(x, y) && !this.animalOn(x, y) && !(p.x === x && p.y === y);
+		if (home && ok(home.x, home.y)) return home;
+		const spots: Spot[] = [];
+		for (let y = area.y; y < area.y + area.h; y++)
+			for (let x = area.x; x < area.x + area.w; x++) if (ok(x, y)) spots.push({ x, y });
+		return spots[Math.floor(Math.random() * spots.length)] ?? null;
 	}
 
 	target(now: number): Thing | null {
@@ -291,8 +342,7 @@ export class World {
 		if (!open(x, y)) return true;
 		// Horses stay off the crops.
 		if (this.farm.riding && plotAt(x, y) >= 0) return true;
-		if (this.hen.occupies(x, y) || this.cow.occupies(x, y) || this.sheep.occupies(x, y))
-			return true;
+		if (this.animalOn(x, y)) return true;
 		const h = this.farm.horse;
 		return !this.farm.riding && x === h.x && y === h.y;
 	}
@@ -335,13 +385,17 @@ export class World {
 
 		const free = (x: number, y: number) =>
 			!(p.x === x && p.y === y) && !(this.from?.x === x && this.from?.y === y);
+		this.syncHerds();
 		// Animals hold still while the player walks over to use something.
 		if (!this.walk?.arrive) {
-			const animalFree = (x: number, y: number) =>
-				free(x, y) && !this.cow.occupies(x, y) && !this.sheep.occupies(x, y);
-			this.hen.update(dt, now, henState(this.farm, now) === 'eating', free);
-			this.cow.update(dt, now, cowState(this.farm, now) === 'eating', animalFree);
-			this.sheep.update(dt, now, false, animalFree);
+			const animalFree = (x: number, y: number) => free(x, y) && !this.animalOn(x, y);
+			this.herds.chicken.forEach((w, i) =>
+				w.update(dt, now, henState(this.farm, now, i) === 'eating', animalFree)
+			);
+			this.herds.cow.forEach((w, i) =>
+				w.update(dt, now, cowState(this.farm, now, i) === 'eating', animalFree)
+			);
+			this.herds.sheep.forEach((w) => w.update(dt, now, false, animalFree));
 		}
 	}
 
@@ -428,38 +482,45 @@ export class World {
 			});
 		}
 
-		const hp = this.hen.pos();
-		const hs = henState(this.farm, now);
-		items.push({
-			y: hp.y * TILE + 13,
-			draw: () => {
-				const pecking = hs === 'eating' && Math.floor(time / 300) % 2 === 0;
-				this.blit(chicken(pecking), hp.x * TILE + 1, hp.y * TILE + 2, this.hen.left);
-				if (hs === 'egg') this.blit(icon('egg'), hp.x * TILE + 9, hp.y * TILE + 6 - bob, false, 10);
-				if (hs === 'hungry') this.bubble(hp.x * TILE + 8, hp.y * TILE - 4 - bob, 'grain');
-			}
+		this.herds.chicken.forEach((w, i) => {
+			const hp = w.pos();
+			const hs = henState(this.farm, now, i);
+			items.push({
+				y: hp.y * TILE + 13,
+				draw: () => {
+					const pecking = hs === 'eating' && Math.floor(time / 300 + i) % 2 === 0;
+					this.blit(chicken(pecking), hp.x * TILE + 1, hp.y * TILE + 2, w.left);
+					if (hs === 'egg')
+						this.blit(icon('egg'), hp.x * TILE + 9, hp.y * TILE + 6 - bob, false, 10);
+					if (hs === 'hungry') this.bubble(hp.x * TILE + 8, hp.y * TILE - 4 - bob, 'grain');
+				}
+			});
 		});
 
-		const cp = this.cow.pos();
-		const cs = cowState(this.farm, now);
-		items.push({
-			y: cp.y * TILE + 14,
-			draw: () => {
-				const eating = cs === 'eating' && Math.floor(time / 500) % 2 === 0;
-				this.blit(cow(eating), cp.x * TILE - 4, cp.y * TILE, this.cow.left);
-				if (cs === 'milk') this.bubble(cp.x * TILE + 8, cp.y * TILE - 6 - bob, 'milk');
-				if (cs === 'hungry') this.bubble(cp.x * TILE + 8, cp.y * TILE - 6 - bob, 'hay');
-			}
+		this.herds.cow.forEach((w, i) => {
+			const cp = w.pos();
+			const cs = cowState(this.farm, now, i);
+			items.push({
+				y: cp.y * TILE + 14,
+				draw: () => {
+					const eating = cs === 'eating' && Math.floor(time / 500 + i) % 2 === 0;
+					this.blit(cow(eating), cp.x * TILE - 4, cp.y * TILE, w.left);
+					if (cs === 'milk') this.bubble(cp.x * TILE + 8, cp.y * TILE - 6 - bob, 'milk');
+					if (cs === 'hungry') this.bubble(cp.x * TILE + 8, cp.y * TILE - 6 - bob, 'hay');
+				}
+			});
 		});
 
-		const sp = this.sheep.pos();
-		const woolly = sheepState(this.farm, now) === 'woolly';
-		items.push({
-			y: sp.y * TILE + 14,
-			draw: () => {
-				this.blit(sheep(woolly), sp.x * TILE - 1, sp.y * TILE + 1, this.sheep.left);
-				if (woolly) this.bubble(sp.x * TILE + 8, sp.y * TILE - 6 - bob, 'wool');
-			}
+		this.herds.sheep.forEach((w, i) => {
+			const sp = w.pos();
+			const woolly = sheepState(this.farm, now, i) === 'woolly';
+			items.push({
+				y: sp.y * TILE + 14,
+				draw: () => {
+					this.blit(sheep(woolly), sp.x * TILE - 1, sp.y * TILE + 1, w.left);
+					if (woolly) this.bubble(sp.x * TILE + 8, sp.y * TILE - 6 - bob, 'wool');
+				}
+			});
 		});
 
 		if (!this.farm.riding) {
@@ -496,6 +557,12 @@ export class World {
 	private drawPlots(now: number, bob: number) {
 		const { ctx } = this;
 		PLOTS.forEach((spot, i) => {
+			// Land not bought yet stays grass, with a coin to say it's for sale.
+			if (i >= this.farm.plots.length) {
+				if (i === this.farm.plots.length)
+					this.bubble(spot.x * TILE + 8, spot.y * TILE + 6 - bob, 'coin');
+				return;
+			}
 			const plot = this.farm.plots[i];
 			const x = spot.x * TILE;
 			const y = spot.y * TILE;

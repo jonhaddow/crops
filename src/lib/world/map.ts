@@ -40,8 +40,15 @@ export const BUILDINGS: Building[] = [
 	{ id: 'barn', kind: 'barn', x: 14, y: 18, w: 5, h: 3, color: '#c0703a' }
 ];
 
-/** The field's nine plots, in the order of Farm.plots. */
-export const PLOTS: Spot[] = [10, 11, 12].flatMap((y) => [4, 5, 6].map((x) => ({ x, y })));
+/**
+ * The field's plots, in the order of Farm.plots: the first 12 to start with
+ * (4×3), then the bottom row, then the right-hand column, as land is bought.
+ */
+export const PLOTS: Spot[] = [
+	...[10, 11, 12].flatMap((y) => [3, 4, 5, 6].map((x) => ({ x, y }))),
+	...[3, 4, 5, 6].map((x) => ({ x, y: 13 })),
+	...[10, 11, 12, 13].map((y) => ({ x: 7, y }))
+];
 
 export type Area = { x: number; y: number; w: number; h: number };
 
@@ -148,7 +155,7 @@ function build(): Terrain[][] {
 
 	// Field: soil plots inside a fence with a gate at the top.
 	for (const p of PLOTS) set(p.x, p.y, 'soil');
-	fence(set, 3, 9, 5, 5, [{ x: 5, y: 9 }]);
+	fence(set, 2, 9, 7, 6, [{ x: 5, y: 9 }]);
 
 	// Chicken pen below the coop, gate at the bottom.
 	fence(set, 10, 11, 6, 4, [{ x: 12, y: 14 }], true);

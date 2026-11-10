@@ -25,8 +25,16 @@ import {
 	sellPrice,
 	shear,
 	SHEEP,
-	updateRequests
+	updateRequests,
+	ANIMALS,
+	buyAnimal,
+	buyLand,
+	nextLand,
+	sellAnimal,
+	START_PLOTS,
+	LAND
 } from './game.ts';
+import { PLOTS } from './world/map.ts';
 
 describe('growing', () => {
 	it('plants, waits for water, grows and harvests', () => {
@@ -148,7 +156,103 @@ describe('rescue', () => {
 	});
 });
 
+describe('animals for sale', () => {
+	it('buys animals up to a limit, and sells all but the last', () => {
+		const farm = newFarm();
+		farm.coins = ANIMALS.cow.price - 1;
+		expect(buyAnimal(farm, 'cow')).toBe(false);
+		farm.coins = 100;
+		expect(buyAnimal(farm, 'cow')).toBe(true);
+		expect(farm.coins).toBe(100 - ANIMALS.cow.price);
+		expect(farm.animals.cow).toEqual([null, null]);
+		expect(buyAnimal(farm, 'cow')).toBe(true);
+		expect(buyAnimal(farm, 'cow')).toBe(false);
+		expect(sellAnimal(farm, 'cow', 0)).toBe(true);
+		expect(sellAnimal(farm, 'cow', 0)).toBe(true);
+		expect(sellAnimal(farm, 'cow', 0)).toBe(false);
+		expect(farm.animals.cow).toHaveLength(1);
+		expect(farm.coins).toBe(100 - 2 * ANIMALS.cow.price + 2 * ANIMALS.cow.sellPrice);
+	});
+
+	it('hands over what an animal has ready before it goes', () => {
+		const farm = newFarm();
+		farm.coins = 100;
+		buyAnimal(farm, 'chicken');
+		feed(farm, 0, 1);
+		expect(sellAnimal(farm, 'chicken', EGG.layMs)).toBe(true);
+		expect(farm.basket.egg).toBe(1);
+		buyAnimal(farm, 'sheep');
+		expect(sellAnimal(farm, 'sheep', 0)).toBe(true);
+		expect(farm.basket.wool).toBe(1);
+	});
+
+	it('looks after each animal separately', () => {
+		const farm = newFarm();
+		farm.coins = 100;
+		buyAnimal(farm, 'chicken');
+		feed(farm, 0, 1);
+		expect(chicken(farm, EGG.layMs, 0)).toBe('hungry');
+		expect(chicken(farm, EGG.layMs, 1)).toBe('egg');
+		expect(collectEgg(farm, EGG.layMs, 1)).toBe(true);
+		expect(feed(farm, 0, 5)).toBe(false);
+		expect(shear(farm, 0, 1)).toBe(false);
+	});
+});
+
+describe('land', () => {
+	it('sells exactly the plots the map has', () => {
+		expect(LAND.at(-1)!.plots).toBe(PLOTS.length);
+		expect(LAND[0].plots).toBeGreaterThan(START_PLOTS);
+	});
+
+	it('keeps only whole strips of land from a save', () => {
+		const farm = parseFarm(JSON.stringify({ version: 4, plots: Array(14).fill(null) }));
+		expect(farm.plots).toHaveLength(START_PLOTS);
+	});
+
+	it('grows the field four plots at a time', () => {
+		const farm = newFarm();
+		expect(farm.plots).toHaveLength(START_PLOTS);
+		farm.coins = 14;
+		expect(buyLand(farm)).toBe(false);
+		farm.coins = 100;
+		expect(buyLand(farm)).toBe(true);
+		expect(farm.plots).toHaveLength(16);
+		expect(buyLand(farm)).toBe(true);
+		expect(farm.plots).toHaveLength(20);
+		expect(nextLand(farm)).toBe(null);
+		expect(buyLand(farm)).toBe(false);
+		expect(farm.coins).toBe(60);
+	});
+});
+
 describe('parseFarm', () => {
+	it('upgrades a version 3 save: crops stay put, animals carry on', () => {
+		const plots = Array(9).fill(null);
+		plots[0] = { crop: 'pumpkin', wateredAt: 7 }; // (4, 10)
+		plots[8] = { crop: 'carrot', wateredAt: null }; // (6, 12)
+		const farm = parseFarm(
+			JSON.stringify({ version: 3, plots, fedAt: 1, cowFedAt: null, shornAt: 3 })
+		);
+		expect(farm.plots).toHaveLength(START_PLOTS);
+		expect(farm.plots[1]).toEqual(plots[0]);
+		expect(farm.plots[11]).toEqual(plots[8]);
+		expect(farm.plots.filter(Boolean)).toHaveLength(2);
+		expect(farm.animals).toEqual({ chicken: [1], sheep: [3], cow: [null] });
+	});
+
+	it('keeps bought land and animals, within limits', () => {
+		const farm = parseFarm(
+			JSON.stringify({
+				version: 4,
+				plots: Array(16).fill(null),
+				animals: { chicken: [1, null, 'x', 4, 5, 6], sheep: [], cow: 'oops' }
+			})
+		);
+		expect(farm.plots).toHaveLength(16);
+		expect(farm.animals).toEqual({ chicken: [1, null, null, 4], sheep: [null], cow: [null] });
+	});
+
 	it('round-trips a farm', () => {
 		const farm = newFarm();
 		plant(farm, 4, 'carrot');

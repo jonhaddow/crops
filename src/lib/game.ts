@@ -2,7 +2,17 @@
 // unit tested and saved as JSON. Nothing ever dies or is lost: a plot that
 // isn't watered just waits, and an egg waits in its nest.
 
-import { H, NPCS, open, START_HORSE, START_PLAYER, W, type Dir, type Spot } from './world/map.ts';
+import {
+	H,
+	NPCS,
+	open,
+	plotAt,
+	START_HORSE,
+	START_PLAYER,
+	W,
+	type Dir,
+	type Spot
+} from './world/map.ts';
 
 export const CROPS = {
 	carrot: { name: 'Carrot', growMs: 60_000, seedPrice: 1 },
@@ -17,6 +27,23 @@ export const EGG = { layMs: 2 * 60_000 } as const;
 
 export const COW = { milkMs: 3 * 60_000 } as const;
 export const SHEEP = { woolMs: 4 * 60_000 } as const;
+
+/** Animals the market sells, and buys back for a bit less. You always keep one of each. */
+export const ANIMALS = {
+	chicken: { name: 'Chicken', price: 8, sellPrice: 5, max: 4 },
+	sheep: { name: 'Sheep', price: 15, sellPrice: 10, max: 3 },
+	cow: { name: 'Cow', price: 20, sellPrice: 14, max: 3 }
+} as const;
+
+export type Animal = keyof typeof ANIMALS;
+export const ANIMAL_NAMES = Object.keys(ANIMALS) as Animal[];
+
+/** The field starts with 12 plots; more land comes 4 plots at a time. */
+export const START_PLOTS = 12;
+export const LAND = [
+	{ plots: 16, price: 15 },
+	{ plots: 20, price: 25 }
+] as const;
 
 /** Everything that can go in the basket: its name, and what the market pays. */
 const ITEMS = {
@@ -55,43 +82,38 @@ export const REQUEST_GAP_MS = 90_000;
 const REQUEST_ITEMS: Produce[] = ['carrot', 'strawberry', 'pumpkin', 'egg', 'milk', 'wool', 'fish'];
 
 export type Farm = {
-	version: 3;
+	version: 4;
 	coins: number;
 	seeds: Record<Crop, number>;
 	basket: Record<Produce, number>;
 	plots: (Plot | null)[];
-	/** When the chicken was last fed; null when it's hungry. */
-	fedAt: number | null;
 	/** Where the player is in the village, and which way they face. */
 	player: Spot & { facing: Dir };
 	riding: boolean;
 	/** Where the horse is when nobody's riding it. */
 	horse: Spot;
-	/** When the cow was last fed; null when it's hungry. */
-	cowFedAt: number | null;
-	/** When the sheep was last sheared; null when it's woolly. */
-	shornAt: number | null;
+	/**
+	 * One entry per animal. Chickens and cows: when last fed (null when
+	 * hungry). Sheep: when last sheared (null when woolly).
+	 */
+	animals: Record<Animal, (number | null)[]>;
 	/** What each villager wants, if anything. */
 	requests: Record<string, Request | null>;
 	/** When each villager will next ask for something. */
 	requestAt: Record<string, number>;
 };
 
-export const PLOT_COUNT = 9;
-
 export function newFarm(): Farm {
 	return {
-		version: 3,
+		version: 4,
 		coins: 5,
 		seeds: { carrot: 3, strawberry: 0, pumpkin: 0 },
 		basket: Object.fromEntries(PRODUCE.map((p) => [p, 0])) as Record<Produce, number>,
-		plots: Array.from({ length: PLOT_COUNT }, () => null),
-		fedAt: null,
+		plots: Array.from({ length: START_PLOTS }, () => null),
 		player: { ...START_PLAYER },
 		riding: false,
 		horse: { ...START_HORSE },
-		cowFedAt: null,
-		shornAt: null,
+		animals: { chicken: [null], sheep: [null], cow: [null] },
 		requests: Object.fromEntries(REQUESTERS.map((id) => [id, null])),
 		requestAt: Object.fromEntries(REQUESTERS.map((id) => [id, 0]))
 	};
@@ -138,53 +160,94 @@ export function harvest(farm: Farm, index: number, now: number): Crop | null {
 
 export type ChickenState = 'hungry' | 'eating' | 'egg';
 
-export function chicken(farm: Farm, now: number): ChickenState {
-	if (farm.fedAt === null) return 'hungry';
-	return now - farm.fedAt >= EGG.layMs ? 'egg' : 'eating';
+export function chicken(farm: Farm, now: number, i = 0): ChickenState {
+	const fedAt = farm.animals.chicken[i] ?? null;
+	if (fedAt === null) return 'hungry';
+	return now - fedAt >= EGG.layMs ? 'egg' : 'eating';
 }
 
-export function feed(farm: Farm, now: number): boolean {
-	if (farm.fedAt !== null) return false;
-	farm.fedAt = now;
+export function feed(farm: Farm, now: number, i = 0): boolean {
+	if (chicken(farm, now, i) !== 'hungry' || i >= farm.animals.chicken.length) return false;
+	farm.animals.chicken[i] = now;
 	return true;
 }
 
-export function collectEgg(farm: Farm, now: number): boolean {
-	if (chicken(farm, now) !== 'egg') return false;
+export function collectEgg(farm: Farm, now: number, i = 0): boolean {
+	if (chicken(farm, now, i) !== 'egg') return false;
 	farm.basket.egg++;
-	farm.fedAt = null;
+	farm.animals.chicken[i] = null;
 	return true;
 }
 
 export type CowState = 'hungry' | 'eating' | 'milk';
 
-export function cow(farm: Farm, now: number): CowState {
-	if (farm.cowFedAt === null) return 'hungry';
-	return now - farm.cowFedAt >= COW.milkMs ? 'milk' : 'eating';
+export function cow(farm: Farm, now: number, i = 0): CowState {
+	const fedAt = farm.animals.cow[i] ?? null;
+	if (fedAt === null) return 'hungry';
+	return now - fedAt >= COW.milkMs ? 'milk' : 'eating';
 }
 
-export function feedCow(farm: Farm, now: number): boolean {
-	if (farm.cowFedAt !== null) return false;
-	farm.cowFedAt = now;
+export function feedCow(farm: Farm, now: number, i = 0): boolean {
+	if (cow(farm, now, i) !== 'hungry' || i >= farm.animals.cow.length) return false;
+	farm.animals.cow[i] = now;
 	return true;
 }
 
-export function milk(farm: Farm, now: number): boolean {
-	if (cow(farm, now) !== 'milk') return false;
+export function milk(farm: Farm, now: number, i = 0): boolean {
+	if (cow(farm, now, i) !== 'milk') return false;
 	farm.basket.milk++;
-	farm.cowFedAt = null;
+	farm.animals.cow[i] = null;
 	return true;
 }
 
 /** The sheep is woolly, or its wool is growing back. */
-export function sheep(farm: Farm, now: number): 'woolly' | 'growing' {
-	return farm.shornAt === null || now - farm.shornAt >= SHEEP.woolMs ? 'woolly' : 'growing';
+export function sheep(farm: Farm, now: number, i = 0): 'woolly' | 'growing' {
+	const shornAt = farm.animals.sheep[i] ?? null;
+	return shornAt === null || now - shornAt >= SHEEP.woolMs ? 'woolly' : 'growing';
 }
 
-export function shear(farm: Farm, now: number): boolean {
-	if (sheep(farm, now) !== 'woolly') return false;
+export function shear(farm: Farm, now: number, i = 0): boolean {
+	if (i >= farm.animals.sheep.length || sheep(farm, now, i) !== 'woolly') return false;
 	farm.basket.wool++;
-	farm.shornAt = now;
+	farm.animals.sheep[i] = now;
+	return true;
+}
+
+/** A new animal arrives hungry (or woolly), ready to look after. */
+export function buyAnimal(farm: Farm, kind: Animal): boolean {
+	const a = ANIMALS[kind];
+	if (farm.coins < a.price || farm.animals[kind].length >= a.max) return false;
+	farm.coins -= a.price;
+	farm.animals[kind].push(null);
+	return true;
+}
+
+/**
+ * Sells the newest animal of a kind, but never the last one. Anything it has
+ * ready (an egg, milk, wool) goes in the basket first.
+ */
+export function sellAnimal(farm: Farm, kind: Animal, now: number): boolean {
+	const herd = farm.animals[kind];
+	if (herd.length <= 1) return false;
+	const last = herd.length - 1;
+	if (kind === 'chicken') collectEgg(farm, now, last);
+	if (kind === 'cow') milk(farm, now, last);
+	if (kind === 'sheep') shear(farm, now, last);
+	herd.pop();
+	farm.coins += ANIMALS[kind].sellPrice;
+	return true;
+}
+
+/** The next bit of land for sale, if there's any left. */
+export function nextLand(farm: Farm) {
+	return LAND.find((l) => l.plots > farm.plots.length) ?? null;
+}
+
+export function buyLand(farm: Farm): boolean {
+	const land = nextLand(farm);
+	if (!land || farm.coins < land.price) return false;
+	farm.coins -= land.price;
+	while (farm.plots.length < land.plots) farm.plots.push(null);
 	return true;
 }
 
@@ -251,30 +314,51 @@ export function rescue(farm: Farm): boolean {
 /**
  * Reads a saved farm, falling back to a new one if it's missing or broken.
  * Version 1 saves (before the village) keep their farm and start at home;
- * version 2 saves (before the cow, sheep and requests) gain them.
+ * version 2 saves (before the cow, sheep and requests) gain them; version 3
+ * saves (one of each animal, a 3×3 field) keep their crops where they were.
  */
 export function parseFarm(json: string | null): Farm {
 	if (!json) return newFarm();
 	try {
-		const saved = JSON.parse(json) as Omit<Partial<Farm>, 'version'> & { version?: number };
-		if (![1, 2, 3].includes(saved?.version as number)) return newFarm();
+		const saved = JSON.parse(json) as Omit<Partial<Farm>, 'version'> & {
+			version?: number;
+			fedAt?: unknown;
+			cowFedAt?: unknown;
+			shornAt?: unknown;
+		};
+		if (![1, 2, 3, 4].includes(saved?.version as number)) return newFarm();
 		const fresh = newFarm();
-		const plots = Array.isArray(saved.plots) ? saved.plots : [];
+		const savedPlots: (Plot | null)[] = Array.isArray(saved.plots) ? saved.plots : [];
+		// Before version 4 the field was 3×3, one in from the fence: same tiles, new indexes.
+		const plots = saved.version === 4 ? savedPlots : Array<Plot | null>(START_PLOTS).fill(null);
+		if (saved.version !== 4)
+			savedPlots
+				.slice(0, 9)
+				.forEach((p, i) => (plots[plotAt(4 + (i % 3), 10 + Math.floor(i / 3))] = p));
+		// Only whole strips of land: the biggest size the save has room for.
+		const owned = [START_PLOTS, ...LAND.map((l) => l.plots)]
+			.filter((n) => n <= Math.max(START_PLOTS, plots.length))
+			.at(-1)!;
+		const time = (t: unknown) => (typeof t === 'number' ? t : null);
+		const herd = (kind: Animal, old: unknown) => {
+			const list = saved.version === 4 ? saved.animals?.[kind] : [old];
+			const out = (Array.isArray(list) ? list : []).slice(0, ANIMALS[kind].max).map(time);
+			return out.length ? out : [null];
+		};
 		const player = spot(saved.player) ?? fresh.player;
 		const facing = saved.player?.facing;
 		const riding = saved.riding === true;
 		return {
-			version: 3,
+			version: 4,
 			coins: num(saved.coins),
 			seeds: counts(fresh.seeds, saved.seeds),
 			basket: counts(fresh.basket, saved.basket),
-			plots: fresh.plots.map((_, i) => {
+			plots: Array.from({ length: owned }, (_, i) => {
 				const p = plots[i];
 				return p && p.crop in CROPS
 					? { crop: p.crop, wateredAt: typeof p.wateredAt === 'number' ? p.wateredAt : null }
 					: null;
 			}),
-			fedAt: typeof saved.fedAt === 'number' ? saved.fedAt : null,
 			player: {
 				x: player.x,
 				y: player.y,
@@ -283,8 +367,11 @@ export function parseFarm(json: string | null): Farm {
 			riding,
 			// While riding, the horse is under the player.
 			horse: riding ? { x: player.x, y: player.y } : (spot(saved.horse) ?? fresh.horse),
-			cowFedAt: typeof saved.cowFedAt === 'number' ? saved.cowFedAt : null,
-			shornAt: typeof saved.shornAt === 'number' ? saved.shornAt : null,
+			animals: {
+				chicken: herd('chicken', saved.fedAt),
+				sheep: herd('sheep', saved.shornAt),
+				cow: herd('cow', saved.cowFedAt)
+			},
 			requests: Object.fromEntries(REQUESTERS.map((id) => [id, request(saved.requests?.[id])])),
 			requestAt: Object.fromEntries(
 				REQUESTERS.map((id) => [
