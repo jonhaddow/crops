@@ -1,15 +1,23 @@
 # Crops
 
-A pixel-art farming game for a 6–8 year old, played on a tablet. Tap to walk round the village and use things: plant and water seeds, pick what grows, feed the chicken, milk the cow, shear the sheep, fish in the pond, help villagers with what they need, sell it all at the market, buy more animals and land, and ride the horse. Nothing ever dies or goes wrong. Arrow keys and Space work on a computer.
+A gentle pixel-art farming game for younger kids, played on a tablet.
 
-Live at https://crops.app.haddow.me. Add it to the home screen to play full screen and offline.
+Tap to walk round the village and use things: plant and water seeds, pick what grows, look after animals, fish in the pond, help villagers, sell it all at the market and buy more animals and land. Nothing ever dies or goes wrong, and the farm keeps growing while the app is closed. Arrow keys and Space work on a computer.
 
-## Development
+## Tech stack
 
-```
+- [SvelteKit](https://svelte.dev) (Svelte 5) and TypeScript, as a static, offline PWA
+- HTML canvas, with all the pixel art drawn in code
+- Saves to the device's localStorage: no server code or sign-in
+- Hosted on [Cloudflare Workers](https://workers.cloudflare.com), deployed from `main` by Workers Builds
+- [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev) for tests
+
+## Running locally
+
+```sh
 npm ci
 npm run dev
-npm test            # unit (the farm's rules)
+npm test            # unit tests (the farm's rules)
 npm run test:e2e    # Playwright, landscape iPad
 npm run check && npm run lint
 ```
