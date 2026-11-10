@@ -240,7 +240,10 @@ export class World {
 		}
 	}
 
-	/** Somewhere free inside an area, away from its gate, for a new animal (`home` if free). */
+	/**
+	 * Somewhere free inside an area for a new animal (`home` if free), and not
+	 * by its gate: like Wanderer.byGate, so it never blocks the way in.
+	 */
 	private freeSpot(area: Area, home: Spot | null): Spot | null {
 		const p = this.farm.player;
 		const inside = (x: number, y: number) =>

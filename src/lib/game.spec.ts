@@ -31,8 +31,10 @@ import {
 	buyLand,
 	nextLand,
 	sellAnimal,
-	START_PLOTS
+	START_PLOTS,
+	LAND
 } from './game.ts';
+import { PLOTS } from './world/map.ts';
 
 describe('growing', () => {
 	it('plants, waits for water, grows and harvests', () => {
@@ -165,11 +167,23 @@ describe('animals for sale', () => {
 		expect(farm.animals.cow).toEqual([null, null]);
 		expect(buyAnimal(farm, 'cow')).toBe(true);
 		expect(buyAnimal(farm, 'cow')).toBe(false);
-		expect(sellAnimal(farm, 'cow')).toBe(true);
-		expect(sellAnimal(farm, 'cow')).toBe(true);
-		expect(sellAnimal(farm, 'cow')).toBe(false);
+		expect(sellAnimal(farm, 'cow', 0)).toBe(true);
+		expect(sellAnimal(farm, 'cow', 0)).toBe(true);
+		expect(sellAnimal(farm, 'cow', 0)).toBe(false);
 		expect(farm.animals.cow).toHaveLength(1);
 		expect(farm.coins).toBe(100 - 2 * ANIMALS.cow.price + 2 * ANIMALS.cow.sellPrice);
+	});
+
+	it('hands over what an animal has ready before it goes', () => {
+		const farm = newFarm();
+		farm.coins = 100;
+		buyAnimal(farm, 'chicken');
+		feed(farm, 0, 1);
+		expect(sellAnimal(farm, 'chicken', EGG.layMs)).toBe(true);
+		expect(farm.basket.egg).toBe(1);
+		buyAnimal(farm, 'sheep');
+		expect(sellAnimal(farm, 'sheep', 0)).toBe(true);
+		expect(farm.basket.wool).toBe(1);
 	});
 
 	it('looks after each animal separately', () => {
@@ -186,6 +200,16 @@ describe('animals for sale', () => {
 });
 
 describe('land', () => {
+	it('sells exactly the plots the map has', () => {
+		expect(LAND.at(-1)!.plots).toBe(PLOTS.length);
+		expect(LAND[0].plots).toBeGreaterThan(START_PLOTS);
+	});
+
+	it('keeps only whole strips of land from a save', () => {
+		const farm = parseFarm(JSON.stringify({ version: 4, plots: Array(14).fill(null) }));
+		expect(farm.plots).toHaveLength(START_PLOTS);
+	});
+
 	it('grows the field four plots at a time', () => {
 		const farm = newFarm();
 		expect(farm.plots).toHaveLength(START_PLOTS);

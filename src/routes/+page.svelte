@@ -296,7 +296,7 @@
 	}
 
 	function sellAnimalOne(kind: Animal) {
-		if (sellAnimal(farm, kind)) play('coin');
+		if (sellAnimal(farm, kind, Date.now())) play('coin');
 		else play('nope');
 	}
 

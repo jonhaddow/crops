@@ -7,7 +7,6 @@ import {
 	NPCS,
 	open,
 	plotAt,
-	PLOTS,
 	START_HORSE,
 	START_PLAYER,
 	W,
@@ -223,10 +222,18 @@ export function buyAnimal(farm: Farm, kind: Animal): boolean {
 	return true;
 }
 
-/** Sells the newest animal of a kind, but never the last one. */
-export function sellAnimal(farm: Farm, kind: Animal): boolean {
-	if (farm.animals[kind].length <= 1) return false;
-	farm.animals[kind].pop();
+/**
+ * Sells the newest animal of a kind, but never the last one. Anything it has
+ * ready (an egg, milk, wool) goes in the basket first.
+ */
+export function sellAnimal(farm: Farm, kind: Animal, now: number): boolean {
+	const herd = farm.animals[kind];
+	if (herd.length <= 1) return false;
+	const last = herd.length - 1;
+	if (kind === 'chicken') collectEgg(farm, now, last);
+	if (kind === 'cow') milk(farm, now, last);
+	if (kind === 'sheep') shear(farm, now, last);
+	herd.pop();
 	farm.coins += ANIMALS[kind].sellPrice;
 	return true;
 }
@@ -322,15 +329,16 @@ export function parseFarm(json: string | null): Farm {
 		if (![1, 2, 3, 4].includes(saved?.version as number)) return newFarm();
 		const fresh = newFarm();
 		const savedPlots: (Plot | null)[] = Array.isArray(saved.plots) ? saved.plots : [];
-		// Before version 4 the field was 3×3, one in from the fence.
-		const plots =
-			saved.version === 4
-				? savedPlots
-				: savedPlots.slice(0, 9).reduce<(Plot | null)[]>((out, p, i) => {
-						out[plotAt(4 + (i % 3), 10 + Math.floor(i / 3))] = p;
-						return out;
-					}, []);
-		const owned = Math.min(PLOTS.length, Math.max(START_PLOTS, plots.length));
+		// Before version 4 the field was 3×3, one in from the fence: same tiles, new indexes.
+		const plots = saved.version === 4 ? savedPlots : Array<Plot | null>(START_PLOTS).fill(null);
+		if (saved.version !== 4)
+			savedPlots
+				.slice(0, 9)
+				.forEach((p, i) => (plots[plotAt(4 + (i % 3), 10 + Math.floor(i / 3))] = p));
+		// Only whole strips of land: the biggest size the save has room for.
+		const owned = [START_PLOTS, ...LAND.map((l) => l.plots)]
+			.filter((n) => n <= Math.max(START_PLOTS, plots.length))
+			.at(-1)!;
 		const time = (t: unknown) => (typeof t === 'number' ? t : null);
 		const herd = (kind: Animal, old: unknown) => {
 			const list = saved.version === 4 ? saved.animals?.[kind] : [old];

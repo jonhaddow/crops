@@ -47,8 +47,18 @@ export function thingAt(
 		const action = c === 'hungry' ? 'feed' : c === 'egg' ? 'collect' : 'wait';
 		return { kind: 'chicken', index: i, action } satisfies Thing;
 	};
-	const hens = animals.chicken.findIndex((s) => at(s, x, y));
-	if (hens >= 0) return hen(hens);
+	const cowAt = (i: number) => {
+		const c = cow(farm, now, i);
+		const action = c === 'hungry' ? 'feed' : c === 'milk' ? 'milk' : 'wait';
+		return { kind: 'cow', index: i, action } satisfies Thing;
+	};
+	const sheepAt = (i: number) => {
+		const action = sheep(farm, now, i) === 'woolly' ? 'shear' : 'wait';
+		return { kind: 'sheep', index: i, action } satisfies Thing;
+	};
+	const find = (list: Spot[]) => list.findIndex((s) => at(s, x, y));
+
+	if (find(animals.chicken) >= 0) return hen(find(animals.chicken));
 	// The coop sees to whichever hen needs it: eggs first, then the hungry.
 	if (b?.kind === 'coop') {
 		const all = farm.animals.chicken.map((_, i) => hen(i));
@@ -56,19 +66,8 @@ export function thingAt(
 			all.find((h) => h.action === 'collect') ?? all.find((h) => h.action === 'feed') ?? all[0]
 		);
 	}
-	const cows = animals.cow.findIndex((s) => at(s, x, y));
-	if (cows >= 0) {
-		const c = cow(farm, now, cows);
-		const action = c === 'hungry' ? 'feed' : c === 'milk' ? 'milk' : 'wait';
-		return { kind: 'cow', index: cows, action };
-	}
-	const flock = animals.sheep.findIndex((s) => at(s, x, y));
-	if (flock >= 0)
-		return {
-			kind: 'sheep',
-			index: flock,
-			action: sheep(farm, now, flock) === 'woolly' ? 'shear' : 'wait'
-		};
+	if (find(animals.cow) >= 0) return cowAt(find(animals.cow));
+	if (find(animals.sheep) >= 0) return sheepAt(find(animals.sheep));
 
 	const npc = npcAt(x, y);
 	if (npc) return npc.id === 'shopkeeper' ? { kind: 'shop' } : { kind: 'npc', npc };
