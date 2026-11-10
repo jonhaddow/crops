@@ -27,6 +27,10 @@ async function start(page: Page, save: Save) {
 	// Let time run (taps wait on animation frames), jumping ahead where needed.
 	await page.clock.resume();
 	await page.waitForFunction(() => 'world' in window);
+	// The camera finds the player on the first frame: taps before it miss.
+	await page.evaluate(
+		() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+	);
 }
 
 type Spot = { x: number; y: number };
