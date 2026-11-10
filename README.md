@@ -12,7 +12,7 @@ Tap to walk round the village and use things: plant and water seeds, pick what g
 - Hosted on [Cloudflare Workers](https://workers.cloudflare.com), deployed from `main` by Workers Builds
 - [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev) for tests
 
-## Development
+## Running locally
 
 ```sh
 npm ci
