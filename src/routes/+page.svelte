@@ -764,7 +764,6 @@
 
 	.empty {
 		font-size: 1.2rem;
-		font-family: inherit;
 		padding: 0.3rem 0;
 	}
 
