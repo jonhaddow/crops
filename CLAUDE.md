@@ -1,6 +1,6 @@
 # Crops
 
-A top-down pixel-art farming game for a 6–8 year old on a tablet (touch, landscape first): tap to walk round a village and use things: farm a field (more land to buy), keep chickens, cows and sheep (more to buy at the market), fish in the pond, help villagers with requests, shop at the market and ride a horse. A static PWA at https://crops.app.haddow.me: one prerendered page, no server code, no D1 and no sign-in. The farm saves to the device's localStorage (`crops-farm`).
+A top-down pixel-art farming game for younger kids on a tablet (touch, landscape first): tap to walk round a village and use things: farm a field (more land to buy), keep chickens, cows and sheep (more to buy at the market), fish in the pond, help villagers with requests, shop at the market and ride a horse. A static PWA at https://crops.app.haddow.me: one prerendered page, no server code, no D1 and no sign-in. The farm saves to the device's localStorage (`crops-farm`).
 
 ## Worth knowing
 
