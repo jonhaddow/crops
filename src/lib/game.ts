@@ -94,6 +94,7 @@ const ITEMS = {
 	fish: { one: 'fish', many: 'fish', price: 2 },
 	bigfish: { one: 'big fish', many: 'big fish', price: 4 },
 	goldfish: { one: 'golden fish', many: 'golden fish', price: 8 },
+	goldsquid: { one: 'golden squid', many: 'golden squid', price: 20 },
 	boot: { one: 'old boot', many: 'old boots', price: 1 }
 } as const;
 
@@ -332,11 +333,15 @@ export function buildStatue(farm: Farm, kind: Statue): boolean {
 	return true;
 }
 
-/** What comes up on the line, from a random number 0–1. */
+/**
+ * What comes up on the line, from a random number 0–1: a fish 52%, a big
+ * fish 32%, an old boot 8%, a golden fish 5%, a golden squid 3%.
+ */
 export function catchFor(roll: number): Produce {
 	if (roll < 0.08) return 'boot';
-	if (roll < 0.13) return 'goldfish';
-	if (roll < 0.45) return 'bigfish';
+	if (roll < 0.11) return 'goldsquid';
+	if (roll < 0.16) return 'goldfish';
+	if (roll < 0.48) return 'bigfish';
 	return 'fish';
 }
 

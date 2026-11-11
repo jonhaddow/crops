@@ -307,6 +307,7 @@
 		play('pop');
 		world.float(at, caught, '+1');
 		if (caught === 'goldfish') say('Wow, a golden fish!', 'They are very rare.');
+		if (caught === 'goldsquid') say('A golden squid!', 'The rarest catch of all!');
 		if (caught === 'boot') say('An old boot!', 'Well, somebody might buy it...');
 	}
 
