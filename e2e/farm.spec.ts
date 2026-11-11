@@ -97,7 +97,16 @@ test('go fishing', async ({ page }) => {
 	await expect(page.getByTestId('fishing')).toHaveText('Tap now!');
 	await page.touchscreen.tap(400, 400);
 	await expect(page.getByTestId('fishing')).toBeHidden();
-	await expect(page.getByText('Basket empty')).toBeHidden();
+	await expect(page.getByText('Empty', { exact: true })).toBeHidden();
+});
+
+test('the basket folds away', async ({ page }) => {
+	await start(page, { ...base, basket: { carrot: 2, egg: 3 } });
+	await page.getByRole('button', { name: 'Basket' }).tap();
+	await expect(page.getByTestId('basket-total')).toHaveText('5');
+	await expect(basket(page, 'carrot')).toBeHidden();
+	await page.getByRole('button', { name: 'Basket' }).tap();
+	await expect(basket(page, 'carrot')).toHaveText('2');
 });
 
 test('bring a villager what they asked for', async ({ page }) => {

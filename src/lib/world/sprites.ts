@@ -355,7 +355,8 @@ export type Icon =
 	| 'goldfish'
 	| 'goldsquid'
 	| 'boot'
-	| 'hay';
+	| 'hay'
+	| 'basket';
 
 /** Small 16×16 pictures, used in the world and (as images) in menus. */
 export function icon(name: Icon): Sprite {
@@ -469,6 +470,16 @@ export function icon(name: Icon): Sprite {
 						[10, 9]
 					])
 						r(x, y, 1, 1, C.ink);
+					return;
+				case 'basket':
+					r(4, 2, 8, 2, C.woodDark);
+					r(3, 4, 2, 4, C.woodDark);
+					r(11, 4, 2, 4, C.woodDark);
+					r(1, 7, 14, 2, C.woodDark);
+					r(2, 9, 12, 5, C.wood);
+					r(3, 13, 10, 1, C.woodDark);
+					for (let x = 3; x < 13; x += 3) r(x, 9, 1, 4, C.woodLight);
+					r(2, 11, 12, 1, C.woodDark);
 					return;
 				case 'egg':
 					r(5, 2, 6, 12, C.egg);
