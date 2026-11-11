@@ -16,8 +16,13 @@ import {
 
 export const CROPS = {
 	carrot: { name: 'Carrot', growMs: 60_000, seedPrice: 1 },
+	potato: { name: 'Potato', growMs: 2 * 60_000, seedPrice: 1 },
 	strawberry: { name: 'Strawberry', growMs: 3 * 60_000, seedPrice: 2 },
-	pumpkin: { name: 'Pumpkin', growMs: 5 * 60_000, seedPrice: 3 }
+	tomato: { name: 'Tomato', growMs: 4 * 60_000, seedPrice: 2 },
+	pumpkin: { name: 'Pumpkin', growMs: 5 * 60_000, seedPrice: 3 },
+	corn: { name: 'Corn', growMs: 6 * 60_000, seedPrice: 3 },
+	sunflower: { name: 'Sunflower', growMs: 8 * 60_000, seedPrice: 4 },
+	watermelon: { name: 'Watermelon', growMs: 10 * 60_000, seedPrice: 5 }
 } as const;
 
 export type Crop = keyof typeof CROPS;
@@ -38,18 +43,29 @@ export const ANIMALS = {
 export type Animal = keyof typeof ANIMALS;
 export const ANIMAL_NAMES = Object.keys(ANIMALS) as Animal[];
 
-/** The field starts with 12 plots; more land comes 4 plots at a time. */
+/**
+ * The field starts with 12 plots; more land comes 4 plots at a time, then
+ * the north field 6 at a time.
+ */
 export const START_PLOTS = 12;
 export const LAND = [
 	{ plots: 16, price: 15 },
-	{ plots: 20, price: 25 }
+	{ plots: 20, price: 25 },
+	{ plots: 26, price: 35 },
+	{ plots: 32, price: 45 },
+	{ plots: 38, price: 60 }
 ] as const;
 
 /** Everything that can go in the basket: its name, and what the market pays. */
 const ITEMS = {
 	carrot: { one: 'carrot', many: 'carrots', price: 2 },
+	potato: { one: 'potato', many: 'potatoes', price: 3 },
 	strawberry: { one: 'strawberry', many: 'strawberries', price: 4 },
+	tomato: { one: 'tomato', many: 'tomatoes', price: 5 },
 	pumpkin: { one: 'pumpkin', many: 'pumpkins', price: 5 },
+	corn: { one: 'corn cob', many: 'corn cobs', price: 6 },
+	sunflower: { one: 'sunflower', many: 'sunflowers', price: 8 },
+	watermelon: { one: 'watermelon', many: 'watermelons', price: 12 },
 	egg: { one: 'egg', many: 'eggs', price: 2 },
 	milk: { one: 'bottle of milk', many: 'bottles of milk', price: 3 },
 	wool: { one: 'ball of wool', many: 'balls of wool', price: 4 },
@@ -79,7 +95,9 @@ export const REQUESTERS = NPCS.filter((n) => n.id !== 'shopkeeper').map((n) => n
 export type Request = { item: Produce; count: number; reward: number };
 /** How long after a request is done before that villager asks again. */
 export const REQUEST_GAP_MS = 90_000;
-const REQUEST_ITEMS: Produce[] = ['carrot', 'strawberry', 'pumpkin', 'egg', 'milk', 'wool', 'fish'];
+const REQUEST_ITEMS: Produce[] = [...CROP_NAMES, 'egg', 'milk', 'wool', 'fish'];
+/** Slow crops: villagers only ask for one or two. */
+const BIG: Produce[] = ['pumpkin', 'corn', 'sunflower', 'watermelon'];
 
 export type Farm = {
 	version: 4;
@@ -107,7 +125,10 @@ export function newFarm(): Farm {
 	return {
 		version: 4,
 		coins: 5,
-		seeds: { carrot: 3, strawberry: 0, pumpkin: 0 },
+		seeds: Object.fromEntries(CROP_NAMES.map((c) => [c, c === 'carrot' ? 3 : 0])) as Record<
+			Crop,
+			number
+		>,
 		basket: Object.fromEntries(PRODUCE.map((p) => [p, 0])) as Record<Produce, number>,
 		plots: Array.from({ length: START_PLOTS }, () => null),
 		player: { ...START_PLAYER },
@@ -264,7 +285,7 @@ export function updateRequests(farm: Farm, now: number, random = Math.random) {
 	for (const id of REQUESTERS) {
 		if (farm.requests[id] || now < (farm.requestAt[id] ?? 0)) continue;
 		const item = REQUEST_ITEMS[Math.floor(random() * REQUEST_ITEMS.length)];
-		const count = 1 + Math.floor(random() * (item === 'pumpkin' ? 2 : 3));
+		const count = 1 + Math.floor(random() * (BIG.includes(item) ? 2 : 3));
 		farm.requests[id] = { item, count, reward: count * sellPrice(item) + 2 };
 	}
 }

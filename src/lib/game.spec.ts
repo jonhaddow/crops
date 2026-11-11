@@ -210,7 +210,7 @@ describe('land', () => {
 		expect(farm.plots).toHaveLength(START_PLOTS);
 	});
 
-	it('grows the field four plots at a time', () => {
+	it('grows the field a strip at a time', () => {
 		const farm = newFarm();
 		expect(farm.plots).toHaveLength(START_PLOTS);
 		farm.coins = 14;
@@ -220,13 +220,23 @@ describe('land', () => {
 		expect(farm.plots).toHaveLength(16);
 		expect(buyLand(farm)).toBe(true);
 		expect(farm.plots).toHaveLength(20);
+		farm.coins = 1000;
+		while (buyLand(farm));
+		expect(farm.plots).toHaveLength(PLOTS.length);
 		expect(nextLand(farm)).toBe(null);
-		expect(buyLand(farm)).toBe(false);
-		expect(farm.coins).toBe(60);
+		expect(farm.coins).toBe(1000 - 35 - 45 - 60);
 	});
 });
 
 describe('parseFarm', () => {
+	it('gives an old save the new crops, with no seeds yet', () => {
+		const farm = parseFarm(
+			JSON.stringify({ version: 4, seeds: { carrot: 2, strawberry: 1, pumpkin: 0 } })
+		);
+		expect(farm.seeds).toMatchObject({ carrot: 2, strawberry: 1, watermelon: 0, corn: 0 });
+		expect(farm.basket.sunflower).toBe(0);
+	});
+
 	it('upgrades a version 3 save: crops stay put, animals carry on', () => {
 		const plots = Array(9).fill(null);
 		plots[0] = { crop: 'pumpkin', wateredAt: 7 }; // (4, 10)

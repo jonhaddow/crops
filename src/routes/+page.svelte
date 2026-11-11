@@ -701,7 +701,8 @@
 	}
 
 	.packets {
-		display: flex;
+		display: grid;
+		grid-template-columns: repeat(4, 8rem);
 		gap: 1.4rem;
 	}
 

@@ -5,7 +5,7 @@ A top-down pixel-art farming game for younger kids on a tablet (touch, landscape
 ## Worth knowing
 
 - `src/lib/game.ts` holds all the rules: pure functions on a plain JSON `Farm`, unit tested. Keep it that way, and keep `parseFarm` accepting old saves: a child's farm must never be wiped by an update.
-- `Farm.animals` holds one timer per animal; the market sells more (up to a limit) and buys them back, but never the last of a kind. `Farm.plots.length` is the land owned: 12 to start, then strips of 4 (`LAND`) in `PLOTS` order. Version 3 saves (3×3 field) are moved onto the same tiles.
+- `Farm.animals` holds one timer per animal; the market sells more (up to a limit) and buys them back, but never the last of a kind. `Farm.plots.length` is the land owned: 12 to start, then strips (`LAND`) in `PLOTS` order: the main field 4 at a time, then the north field behind home 6 at a time. Version 3 saves (3×3 field) are moved onto the same tiles.
 - Growth uses real timestamps, so crops keep growing while the app is closed.
 - `src/lib/world/`: `map.ts` (terrain, buildings, people; built in code), `interact.ts` (what's on a tile, and so what tapping it does: pure, tested), `path.ts` (shortest walk, breadth first: pure, tested), `engine.ts` (canvas loop: walking routes, camera, wandering animals, riding, fishing line), `sprites.ts` (all the pixel art).
 - Tapping something walks beside it, faces it and uses it (`act` in `+page.svelte`). Animals hold still while you walk to them. A horse can't go on the crops, so tapping a plot it can't reach hops off first. Animals keep clear of the tiles by their gates.
