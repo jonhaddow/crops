@@ -400,6 +400,9 @@
 	}
 
 	const basketItems = $derived(PRODUCE.filter((p) => farm.basket[p] > 0));
+	const basketTotal = $derived(PRODUCE.reduce((n, p) => n + farm.basket[p], 0));
+	// The full basket covers a phone's screen, so it starts folded there.
+	let basketOpen = $state(Math.min(innerWidth, innerHeight) >= 600);
 	const noSeeds = $derived(CROP_NAMES.every((c) => farm.seeds[c] === 0));
 	const land = $derived(nextLand(farm));
 	const homeNext = $derived(nextHome(farm));
@@ -426,16 +429,27 @@
 		<img src={img('coin')} alt="" />
 		<span class="num" data-testid="coins">{farm.coins}</span>
 	</div>
-	<div class="panel basket" aria-label="Basket">
-		{#each basketItems as item (item)}
-			<span class="item">
-				<img src={img(item)} alt="" />
-				<span class="num" data-testid="basket-{item}">{farm.basket[item]}</span>
-			</span>
+	<button
+		class="panel basket"
+		class:open={basketOpen}
+		aria-label="Basket"
+		aria-expanded={basketOpen}
+		onclick={() => (basketOpen = !basketOpen)}
+	>
+		<img class="icon" src={img('basket')} alt="" />
+		{#if basketOpen}
+			{#each basketItems as item (item)}
+				<span class="item">
+					<img src={img(item)} alt="" />
+					<span class="num" data-testid="basket-{item}">{farm.basket[item]}</span>
+				</span>
+			{:else}
+				<span class="empty">Empty</span>
+			{/each}
 		{:else}
-			<span class="empty">Basket empty</span>
-		{/each}
-	</div>
+			<span class="num" data-testid="basket-total">{basketTotal}</span>
+		{/if}
+	</button>
 </div>
 
 {#if fishing}
@@ -717,11 +731,29 @@
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: flex-end;
+		align-items: center;
 		max-width: 60vw;
 		gap: 0.8rem;
 		padding: 0.3rem 0.8rem;
+		font: inherit;
 		font-size: 1.6rem;
 		line-height: 1;
+		color: inherit;
+		cursor: pointer;
+		pointer-events: auto;
+	}
+
+	/* Short screens (a phone on its side): a smaller open basket. */
+	@media (max-height: 500px) {
+		.basket.open {
+			gap: 0.5rem;
+			font-size: 1.1rem;
+		}
+
+		.basket.open img {
+			width: 1.4rem;
+			height: 1.4rem;
+		}
 	}
 
 	.item {
@@ -732,6 +764,7 @@
 
 	.empty {
 		font-size: 1.2rem;
+		font-family: inherit;
 		padding: 0.3rem 0;
 	}
 
