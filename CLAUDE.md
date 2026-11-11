@@ -1,11 +1,12 @@
 # Crops
 
-A top-down pixel-art farming game for younger kids on a tablet (touch, landscape first): tap to walk round a village and use things: farm a field (more land to buy), keep chickens, cows and sheep (more to buy at the market), fish in the pond, help villagers with requests, shop at the market and ride a horse. A static PWA at https://crops.app.haddow.me: one prerendered page, no server code, no D1 and no sign-in. The farm saves to the device's localStorage (`crops-farm`).
+A top-down pixel-art farming game for younger kids on a tablet (touch, landscape first): tap to walk round a village and use things: farm a field (more land to buy), keep chickens, cows and sheep (more to buy at the market), fish in the pond, help villagers with requests, shop at the market and ride a horse. A builder villager sells house upgrades, village decorations and a golden statue. A static PWA at https://crops.app.haddow.me: one prerendered page, no server code, no D1 and no sign-in. The farm saves to the device's localStorage (`crops-farm`).
 
 ## Worth knowing
 
 - `src/lib/game.ts` holds all the rules: pure functions on a plain JSON `Farm`, unit tested. Keep it that way, and keep `parseFarm` accepting old saves: a child's farm must never be wiped by an update.
 - `Farm.animals` holds one timer per animal; the market sells more (up to a limit) and buys them back, but never the last of a kind. `Farm.plots.length` is the land owned: 12 to start, then strips (`LAND`) in `PLOTS` order: the main field 4 at a time, then the north field behind home 6 at a time. Version 3 saves (3×3 field) are moved onto the same tiles.
+- The builder: `Farm.home` counts house upgrades (`HOME`), `Farm.decor` lists what's built (`DECOR`) and `Farm.statue` is the one statue. The fountain site and plinth are always there (blocking, in `BUILDINGS`), and only their look changes; lamps, flower beds and bunting are drawn where you can walk (`LAMPS`, `BEDS`, `BUNTING`).
 - Growth uses real timestamps, so crops keep growing while the app is closed.
 - `src/lib/world/`: `map.ts` (terrain, buildings, people; built in code), `interact.ts` (what's on a tile, and so what tapping it does: pure, tested), `path.ts` (shortest walk, breadth first: pure, tested), `engine.ts` (canvas loop: walking routes, camera, wandering animals, riding, fishing line), `sprites.ts` (all the pixel art).
 - Tapping something walks beside it, faces it and uses it (`act` in `+page.svelte`). Animals hold still while you walk to them. A horse can't go on the crops, so tapping a plot it can't reach hops off first. Animals keep clear of the tiles by their gates.

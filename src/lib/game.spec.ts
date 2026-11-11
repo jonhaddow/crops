@@ -32,7 +32,13 @@ import {
 	nextLand,
 	sellAnimal,
 	START_PLOTS,
-	LAND
+	LAND,
+	buildDecor,
+	buildStatue,
+	HOME,
+	nextHome,
+	STATUE_PRICE,
+	upgradeHome
 } from './game.ts';
 import { PLOTS } from './world/map.ts';
 
@@ -286,5 +292,46 @@ describe('parseFarm', () => {
 		expect(farm.coins).toBe(0);
 		expect(farm.seeds.carrot).toBe(0);
 		expect(farm.plots.every((p) => p === null)).toBe(true);
+	});
+});
+
+describe('builder', () => {
+	it('upgrades the house one step at a time, until it is done', () => {
+		const farm = newFarm();
+		farm.coins = 1000;
+		for (const step of HOME) {
+			expect(nextHome(farm)).toBe(step);
+			expect(upgradeHome(farm)).toBe(true);
+		}
+		expect(farm.home).toBe(HOME.length);
+		expect(upgradeHome(farm)).toBe(false);
+		expect(farm.coins).toBe(1000 - HOME.reduce((n, s) => n + s.price, 0));
+	});
+
+	it('builds each decoration once, and one statue', () => {
+		const farm = newFarm();
+		expect(buildDecor(farm, 'bunting')).toBe(false);
+		farm.coins = 1000;
+		expect(buildDecor(farm, 'bunting')).toBe(true);
+		expect(buildDecor(farm, 'bunting')).toBe(false);
+		expect(buildStatue(farm, 'horse')).toBe(true);
+		expect(buildStatue(farm, 'cow')).toBe(false);
+		expect(farm.statue).toBe('horse');
+		expect(farm.coins).toBe(1000 - 25 - STATUE_PRICE);
+	});
+
+	it('keeps what was built, and gives older saves nothing built', () => {
+		const farm = newFarm();
+		farm.home = 2;
+		farm.decor = ['lamps', 'fountain'];
+		farm.statue = 'chicken';
+		const back = parseFarm(JSON.stringify(farm));
+		expect([back.home, back.decor, back.statue]).toEqual([2, ['lamps', 'fountain'], 'chicken']);
+		const old = parseFarm(JSON.stringify({ version: 4, coins: 3 }));
+		expect([old.home, old.decor, old.statue]).toEqual([0, [], null]);
+		const odd = parseFarm(
+			JSON.stringify({ version: 4, home: 99, decor: ['castle', 'beds', 'beds'], statue: 'dragon' })
+		);
+		expect([odd.home, odd.decor, odd.statue]).toEqual([HOME.length, ['beds'], null]);
 	});
 });

@@ -3,8 +3,10 @@ import { buyLand, EGG, newFarm, parseFarm, plant } from '../game.ts';
 import { reachTiles, target } from './interact.ts';
 import { beside, onto, route } from './path.ts';
 import {
+	BEDS,
 	BUILDINGS,
 	H,
+	LAMPS,
 	NPCS,
 	open,
 	PASTURE,
@@ -58,6 +60,11 @@ describe('map', () => {
 		expect(seen.has(`${PEN.x},${PEN.y}`)).toBe(true);
 		expect(seen.has(`${PASTURE.x},${PASTURE.y}`)).toBe(true);
 		expect(nextTo(seen, START_HORSE.x, START_HORSE.y)).toBe(true);
+	});
+
+	it('puts lamps and flower beds where you can walk', () => {
+		for (const s of [...LAMPS, ...BEDS])
+			expect(seen.has(`${s.x},${s.y}`), `${s.x},${s.y}`).toBe(true);
 	});
 
 	it('keeps buildings on the map and apart', () => {
@@ -114,6 +121,8 @@ describe('target', () => {
 		expect(target(farm, 0, away)).toMatchObject({ kind: 'npc' });
 		farm.player = { x: 26, y: 13, facing: 'up' };
 		expect(target(farm, 0, away)).toEqual({ kind: 'shop' });
+		farm.player = { x: 23, y: 18, facing: 'right' };
+		expect(target(farm, 0, away)).toEqual({ kind: 'builder' });
 		farm.player = { x: 12, y: 24, facing: 'left' };
 		expect(target(farm, 0, away)).toEqual({ kind: 'water' });
 		farm.player = { x: 16, y: 25, facing: 'right' };
