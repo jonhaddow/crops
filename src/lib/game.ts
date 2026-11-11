@@ -56,6 +56,28 @@ export const LAND = [
 	{ plots: 38, price: 60 }
 ] as const;
 
+/** What the builder can do to your house, one after another. */
+export const HOME = [
+	{ id: 'flowers', name: 'Window boxes', price: 30 },
+	{ id: 'porch', name: 'A porch', price: 60 },
+	{ id: 'upstairs', name: 'An upstairs', price: 120 }
+] as const;
+
+/** What the builder can make for the village, in any order. */
+export const DECOR = {
+	bunting: { name: 'Bunting', price: 25 },
+	beds: { name: 'Flower beds', price: 40 },
+	lamps: { name: 'Lamp posts', price: 60 },
+	fountain: { name: 'A fountain', price: 100 }
+} as const;
+export type Decor = keyof typeof DECOR;
+export const DECOR_NAMES = Object.keys(DECOR) as Decor[];
+
+/** The big one to save up for: a golden statue of your favourite animal. */
+export const STATUES = ['chicken', 'sheep', 'cow', 'horse'] as const;
+export type Statue = (typeof STATUES)[number];
+export const STATUE_PRICE = 150;
+
 /** Everything that can go in the basket: its name, and what the market pays. */
 const ITEMS = {
 	carrot: { one: 'carrot', many: 'carrots', price: 2 },
@@ -90,8 +112,10 @@ export function amount(item: Produce, count: number): string {
 /** A planted plot. Growing starts when it's watered. */
 export type Plot = { crop: Crop; wateredAt: number | null };
 
-/** Villagers who ask for things (everyone but the shopkeeper). */
-export const REQUESTERS = NPCS.filter((n) => n.id !== 'shopkeeper').map((n) => n.id);
+/** Villagers who ask for things (everyone but the shopkeeper and the builder). */
+export const REQUESTERS = NPCS.filter((n) => n.id !== 'shopkeeper' && n.id !== 'builder').map(
+	(n) => n.id
+);
 export type Request = { item: Produce; count: number; reward: number };
 /** How long after a request is done before that villager asks again. */
 export const REQUEST_GAP_MS = 90_000;
@@ -119,6 +143,11 @@ export type Farm = {
 	requests: Record<string, Request | null>;
 	/** When each villager will next ask for something. */
 	requestAt: Record<string, number>;
+	/** How many HOME upgrades are done. */
+	home: number;
+	/** What's been built in the village. */
+	decor: Decor[];
+	statue: Statue | null;
 };
 
 export function newFarm(): Farm {
@@ -136,7 +165,10 @@ export function newFarm(): Farm {
 		horse: { ...START_HORSE },
 		animals: { chicken: [null], sheep: [null], cow: [null] },
 		requests: Object.fromEntries(REQUESTERS.map((id) => [id, null])),
-		requestAt: Object.fromEntries(REQUESTERS.map((id) => [id, 0]))
+		requestAt: Object.fromEntries(REQUESTERS.map((id) => [id, 0])),
+		home: 0,
+		decor: [],
+		statue: null
 	};
 }
 
@@ -272,6 +304,34 @@ export function buyLand(farm: Farm): boolean {
 	return true;
 }
 
+/** The next thing the builder can do to your house, if there's any left. */
+export function nextHome(farm: Farm) {
+	return HOME[farm.home] ?? null;
+}
+
+export function upgradeHome(farm: Farm): boolean {
+	const next = nextHome(farm);
+	if (!next || farm.coins < next.price) return false;
+	farm.coins -= next.price;
+	farm.home++;
+	return true;
+}
+
+export function buildDecor(farm: Farm, d: Decor): boolean {
+	if (farm.decor.includes(d) || farm.coins < DECOR[d].price) return false;
+	farm.coins -= DECOR[d].price;
+	farm.decor.push(d);
+	return true;
+}
+
+/** There's one plinth, so one statue. */
+export function buildStatue(farm: Farm, kind: Statue): boolean {
+	if (farm.statue || farm.coins < STATUE_PRICE) return false;
+	farm.coins -= STATUE_PRICE;
+	farm.statue = kind;
+	return true;
+}
+
 /** What comes up on the line, from a random number 0–1. */
 export function catchFor(roll: number): Produce {
 	if (roll < 0.08) return 'boot';
@@ -399,7 +459,11 @@ export function parseFarm(json: string | null): Farm {
 					id,
 					typeof saved.requestAt?.[id] === 'number' ? saved.requestAt[id] : 0
 				])
-			)
+			),
+			// Saves from before the builder have nothing built yet.
+			home: Math.min(num(saved.home), HOME.length),
+			decor: DECOR_NAMES.filter((d) => Array.isArray(saved.decor) && saved.decor.includes(d)),
+			statue: STATUES.includes(saved.statue as Statue) ? (saved.statue as Statue) : null
 		};
 	} catch {
 		return newFarm();

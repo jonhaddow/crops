@@ -162,6 +162,31 @@ test('buy a cow, more land, and sell a hen', async ({ page }) => {
 	await expect(page.getByRole('dialog', { name: 'Plant a seed' })).toBeVisible();
 });
 
+test('the builder upgrades the house and builds a statue', async ({ page }) => {
+	await start(page, {
+		...base,
+		version: 4,
+		coins: 200,
+		plots: Array(12).fill(null),
+		player: { x: 22, y: 18, facing: 'right' }
+	});
+	await tapTile(page, 24, 18);
+	await page.getByRole('button', { name: 'Build Window boxes' }).tap();
+	await expect(page.getByText('Bang, bang, bang... all done!')).toBeVisible();
+	await expect(page.getByTestId('coins')).toHaveText('170');
+	await page.getByText('Bang, bang, bang... all done!').tap();
+	await page.getByText('Go and look at your house!').tap();
+	await tapTile(page, 24, 18);
+	// The next upgrade is offered, and the statue is too dear to build twice.
+	await expect(page.getByRole('button', { name: 'Build A porch' })).toBeVisible();
+	await page.getByRole('button', { name: 'Build a horse statue' }).tap();
+	await expect(page.getByTestId('coins')).toHaveText('20');
+	await page.getByText('Bang, bang, bang... all done!').tap();
+	await page.getByText('Go and look at the statue!').tap();
+	await tapTile(page, 26, 23);
+	await expect(page.getByText('A golden horse!')).toBeVisible();
+});
+
 test('ride the horse and hop off', async ({ page }) => {
 	await start(page, { ...base, player: { x: 32, y: 25, facing: 'right' } });
 	const world = page.getByTestId('world');

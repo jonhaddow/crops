@@ -5,16 +5,21 @@
 		ANIMALS,
 		buy,
 		buyAnimal,
+		buildDecor,
+		buildStatue,
 		buyLand,
 		catchFor,
 		collectEgg,
 		CROP_NAMES,
 		CROPS,
+		DECOR,
+		DECOR_NAMES,
 		feed,
 		feedCow,
 		fulfil,
 		harvest,
 		milk,
+		nextHome,
 		nextLand,
 		parseFarm,
 		plant,
@@ -24,20 +29,27 @@
 		sellAnimal,
 		sellPrice,
 		shear,
+		STATUE_PRICE,
+		STATUES,
+		upgradeHome,
 		updateRequests,
 		water,
 		type Animal,
 		type Crop,
-		type Produce
+		type Decor,
+		type Produce,
+		type Statue
 	} from '#lib/game.ts';
 	import { play } from '#lib/sound.ts';
 	import { World } from '#lib/world/engine.ts';
 	import { facingTile, reachTiles, thingAt } from '#lib/world/interact.ts';
-	import { NPCS, open, PLOTS, type Dir, type Spot } from '#lib/world/map.ts';
+	import { BUILDINGS, NPCS, open, PLOTS, type Dir, type Spot } from '#lib/world/map.ts';
 	import { beside, onto } from '#lib/world/path.ts';
 	import {
+		building,
 		chicken as chickenSprite,
 		cow as cowSprite,
+		decorSprite,
 		icon,
 		sheep as sheepSprite,
 		spriteUrl,
@@ -58,6 +70,7 @@
 	let dialog = $state<string[] | null>(null);
 	let picking = $state<number | null>(null);
 	let marketOpen = $state(false);
+	let builderOpen = $state(false);
 	/**
 	 * What the market lists: what was in the basket when it opened. Rows stay
 	 * put (greyed out once sold) so repeated taps don't sell the next thing.
@@ -69,7 +82,7 @@
 	let fishing = $state<'wait' | 'bite' | null>(null);
 	let fishTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const busy = $derived(dialog !== null || picking !== null || marketOpen);
+	const busy = $derived(dialog !== null || picking !== null || marketOpen || builderOpen);
 	$effect(() => {
 		if (world) world.paused = busy;
 	});
@@ -84,6 +97,15 @@
 		cow: spriteUrl(cowSprite(false)),
 		sheep: spriteUrl(sheepSprite(true))
 	};
+
+	const homeBuilding = BUILDINGS.find((b) => b.id === 'home')!;
+	const plinth = BUILDINGS.find((b) => b.id === 'plinth')!;
+	/** Pictures for the builder's menu: home after each upgrade, the decorations, the statues. */
+	const homeImg = [1, 2, 3].map((n) => spriteUrl(building(homeBuilding, n)));
+	const decorImg = Object.fromEntries(
+		DECOR_NAMES.map((d) => [d, spriteUrl(decorSprite(d))])
+	) as Record<Decor, string>;
+	const statueImg = STATUES.map((_, i) => spriteUrl(building(plinth, i + 1)));
 
 	onMount(() => {
 		world = new World(canvas, farm);
@@ -193,11 +215,16 @@
 				marketOpen = true;
 				play('talk');
 				break;
+			case 'builder':
+				world.faceNpc('builder');
+				builderOpen = true;
+				play('talk');
+				break;
 			case 'water':
 				startFishing();
 				break;
 			case 'building':
-				say(...(LOOKS[t.id] ?? LOOKS.house));
+				say(...look(t.id));
 				break;
 		}
 	}
@@ -209,6 +236,19 @@
 		stable: ['The stable smells of hay.', 'Your horse is out in the paddock.'],
 		barn: ['Moo! Baa!', 'The cows and sheep live here.', 'You can buy more at the market.']
 	};
+
+	/** What you see when you tap a building, which can depend on what's been built. */
+	function look(id: string): string[] {
+		if (id === 'fountain')
+			return farm.decor.includes('fountain')
+				? ['Splish splash!', 'You throw in a coin and make a wish.']
+				: ['A building site!', 'Ask the builder what could go here.'];
+		if (id === 'plinth')
+			return farm.statue
+				? [`A golden ${farm.statue}!`, 'It shines in the sun.']
+				: ['An empty plinth.', 'The builder could put a statue on it!'];
+		return LOOKS[id] ?? LOOKS.house;
+	}
 
 	/** A villager: hands over what they asked for, or says what they'd like. */
 	function talk(id: string, now: number) {
@@ -305,9 +345,26 @@
 		else play('nope');
 	}
 
+	/** The builder makes something: close the menu and say so. */
+	function built(ok: boolean, what: string) {
+		if (!ok) return play('nope');
+		builderOpen = false;
+		play('coin');
+		say('Bang, bang, bang... all done!', `Go and look at ${what}!`);
+	}
+
+	const upgradeHomeOne = () => built(upgradeHome(farm), 'your house');
+	const buildDecorOne = (d: Decor) =>
+		built(
+			buildDecor(farm, d),
+			d === 'fountain' ? 'the fountain' : `the ${DECOR[d].name.toLowerCase()}`
+		);
+	const buildStatueOne = (s: Statue) => built(buildStatue(farm, s), 'the statue');
+
 	function closeAll() {
 		picking = null;
 		marketOpen = false;
+		builderOpen = false;
 		dialog = null;
 		rescue(farm);
 	}
@@ -352,6 +409,7 @@
 	const basketItems = $derived(PRODUCE.filter((p) => farm.basket[p] > 0));
 	const noSeeds = $derived(CROP_NAMES.every((c) => farm.seeds[c] === 0));
 	const land = $derived(nextLand(farm));
+	const homeNext = $derived(nextHome(farm));
 </script>
 
 <svelte:window onkeydown={keydown} onkeyup={keyup} />
@@ -544,6 +602,94 @@
 	</div>
 {/if}
 
+{#if builderOpen}
+	<div class="overlay" role="presentation" onclick={closeAll}>
+		<div
+			class="card market"
+			role="dialog"
+			aria-label="Builder"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={() => {}}
+		>
+			<button class="close" aria-label="Close" onclick={closeAll}>✕</button>
+			<div class="panel coins in-card">
+				<img src={img('coin')} alt="" />
+				<span class="num">{farm.coins}</span>
+			</div>
+
+			<h2>Your house</h2>
+			<div class="rows">
+				{#if homeNext}
+					<button
+						class="row"
+						disabled={farm.coins < homeNext.price}
+						aria-label="Build {homeNext.name}"
+						onclick={upgradeHomeOne}
+					>
+						<img class="house" src={homeImg[farm.home]} alt="" />
+						<span class="label">{homeNext.name}</span>
+						<span class="price"
+							><img src={img('coin')} alt="" /><span class="num">{homeNext.price}</span></span
+						>
+					</button>
+				{:else}
+					<div class="row done">
+						<img class="house" src={homeImg[2]} alt="" />
+						<span class="label">All done!</span>
+					</div>
+				{/if}
+			</div>
+
+			<h2>The village</h2>
+			<div class="rows">
+				{#each DECOR_NAMES as d (d)}
+					{@const done = farm.decor.includes(d)}
+					<button
+						class="row"
+						disabled={done || farm.coins < DECOR[d].price}
+						aria-label="Build {DECOR[d].name}"
+						onclick={() => buildDecorOne(d)}
+					>
+						<img class="big" src={decorImg[d]} alt="" />
+						<span class="label">{DECOR[d].name}</span>
+						{#if done}
+							<span class="tick">✓</span>
+						{:else}
+							<span class="price"
+								><img src={img('coin')} alt="" /><span class="num">{DECOR[d].price}</span></span
+							>
+						{/if}
+					</button>
+				{/each}
+			</div>
+
+			<h2>A golden statue</h2>
+			<div class="rows">
+				{#each STATUES as s, i (s)}
+					{#if !farm.statue || farm.statue === s}
+						<button
+							class="row"
+							disabled={!!farm.statue || farm.coins < STATUE_PRICE}
+							aria-label="Build a {s} statue"
+							onclick={() => buildStatueOne(s)}
+						>
+							<img class="statue" src={statueImg[i]} alt="" />
+							{#if farm.statue}
+								<span class="tick">✓</span>
+							{:else}
+								<span class="price"
+									><img src={img('coin')} alt="" /><span class="num">{STATUE_PRICE}</span></span
+								>
+							{/if}
+						</button>
+					{/if}
+				{/each}
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	canvas {
 		position: fixed;
@@ -556,6 +702,7 @@
 
 	img {
 		image-rendering: pixelated;
+		object-fit: contain;
 		width: 2rem;
 		height: 2rem;
 	}
@@ -814,6 +961,33 @@
 	.mini-land img {
 		width: 2.6rem;
 		height: 2.6rem;
+	}
+
+	.row img.house {
+		width: 7rem;
+		height: auto;
+	}
+
+	.row img.statue {
+		width: 4.5rem;
+		height: 4.5rem;
+	}
+
+	.label {
+		font-size: 1.2rem;
+		line-height: 1.2;
+	}
+
+	.tick {
+		font-size: 1.6rem;
+		line-height: 1.6rem;
+		color: var(--leaf);
+	}
+
+	.done {
+		background: var(--card);
+		border: var(--outline);
+		border-radius: 6px;
 	}
 
 	.full {

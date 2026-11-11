@@ -16,6 +16,7 @@ export type Thing =
 	| { kind: 'horse' }
 	| { kind: 'npc'; npc: Npc }
 	| { kind: 'shop' }
+	| { kind: 'builder' }
 	| { kind: 'water' }
 	/** A building with nothing to do but look at: home, houses, the well, stable, barn. */
 	| { kind: 'building'; id: string };
@@ -70,7 +71,9 @@ export function thingAt(
 	if (find(animals.sheep) >= 0) return sheepAt(find(animals.sheep));
 
 	const npc = npcAt(x, y);
-	if (npc) return npc.id === 'shopkeeper' ? { kind: 'shop' } : { kind: 'npc', npc };
+	if (npc?.id === 'shopkeeper') return { kind: 'shop' };
+	if (npc?.id === 'builder') return { kind: 'builder' };
+	if (npc) return { kind: 'npc', npc };
 	if (b?.kind === 'stall') return { kind: 'shop' };
 	if (b) return { kind: 'building', id: b.id };
 	if (terrain(x, y) === 'water') return { kind: 'water' };

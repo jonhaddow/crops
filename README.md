@@ -2,7 +2,7 @@
 
 A gentle pixel-art farming game for younger kids, played on a tablet.
 
-Tap to walk round the village and use things: plant and water seeds, pick what grows, look after animals, fish in the pond, help villagers, sell it all at the market and buy more animals and land. Nothing ever dies or goes wrong, and the farm keeps growing while the app is closed. Arrow keys and Space work on a computer.
+Tap to walk round the village and use things: plant and water seeds, pick what grows, look after animals, fish in the pond, help villagers, sell it all at the market and buy more animals and land, then spend coins with the builder on a bigger house and decorations for the village. Nothing ever dies or goes wrong, and the farm keeps growing while the app is closed. Arrow keys and Space work on a computer.
 
 ## Tech stack
 

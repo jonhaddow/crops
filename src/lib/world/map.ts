@@ -16,7 +16,8 @@ export const STEP: Record<Dir, Spot> = {
 	right: { x: 1, y: 0 }
 };
 
-export type BuildingKind = 'house' | 'stable' | 'barn' | 'coop' | 'stall' | 'well';
+export type BuildingKind =
+	'house' | 'stable' | 'barn' | 'coop' | 'stall' | 'well' | 'fountain' | 'plinth';
 export type Building = {
 	id: string;
 	kind: BuildingKind;
@@ -37,8 +38,32 @@ export const BUILDINGS: Building[] = [
 	{ id: 'stall', kind: 'stall', x: 25, y: 11, w: 3, h: 2, color: '#e8423f' },
 	{ id: 'well', kind: 'well', x: 17, y: 11, w: 2, h: 2, color: '#8d5527' },
 	{ id: 'stable', kind: 'stable', x: 31, y: 20, w: 6, h: 3, color: '#b03a2e' },
-	{ id: 'barn', kind: 'barn', x: 14, y: 18, w: 5, h: 3, color: '#c0703a' }
+	{ id: 'barn', kind: 'barn', x: 14, y: 18, w: 5, h: 3, color: '#c0703a' },
+	// On the village green: a building site until the builder makes the
+	// fountain, and an empty plinth until there's a statue on it.
+	{ id: 'fountain', kind: 'fountain', x: 25, y: 20, w: 2, h: 2, color: '#a3a8ad' },
+	{ id: 'plinth', kind: 'plinth', x: 26, y: 23, w: 2, h: 1, color: '#a3a8ad' }
 ];
+
+/** Where the builder's lamp posts and flower beds go (you can walk past them). */
+export const LAMPS: Spot[] = [
+	[5, 17],
+	[13, 17],
+	[24, 12],
+	[29, 17],
+	[37, 17]
+].map(([x, y]) => ({ x, y }));
+export const BEDS: Spot[] = [
+	[3, 7],
+	[4, 7],
+	[24, 19],
+	[27, 20],
+	[27, 21],
+	[26, 24],
+	[27, 24]
+].map(([x, y]) => ({ x, y }));
+/** The bunting is strung across the village square, between these tiles. */
+export const BUNTING = { from: 20, to: 28, y: 13 };
 
 /**
  * The plots, in the order of Farm.plots: the first 12 to start with (4×3),
@@ -59,7 +84,16 @@ export const PEN: Area = { x: 11, y: 12, w: 4, h: 2 };
 /** The cow and sheep wander in the pasture below the barn. */
 export const PASTURE: Area = { x: 14, y: 22, w: 6, h: 5 };
 
-export type Npc = { id: string; x: number; y: number; hair: string; shirt: string; says: string[] };
+export type Npc = {
+	id: string;
+	x: number;
+	y: number;
+	hair: string;
+	shirt: string;
+	/** A hat's colour, if they wear one. */
+	cap?: string;
+	says: string[];
+};
 
 export const NPCS: Npc[] = [
 	{
@@ -69,6 +103,15 @@ export const NPCS: Npc[] = [
 		hair: '#3b2a1e',
 		shirt: '#e8423f',
 		says: ['Welcome to the market!']
+	},
+	{
+		id: 'builder',
+		x: 24,
+		y: 18,
+		hair: '#3b2a1e',
+		shirt: '#f5862b',
+		cap: '#ffc21f',
+		says: ['I can build things!']
 	},
 	{
 		id: 'rosie',

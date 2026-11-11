@@ -1,7 +1,7 @@
 // Pixel art, drawn in code: each sprite is flat-coloured rectangles on a small
 // canvas, then given a 1px ink outline automatically. Sprites are made once and
 // cached. One art pixel becomes several screen pixels when drawn.
-import type { Crop } from '../game.ts';
+import { STATUES, type Crop, type Decor } from '../game.ts';
 import { BUILDINGS, H, hash, terrain, TERRAIN, W, type Building, type Dir } from './map.ts';
 
 export const TILE = 16;
@@ -11,7 +11,6 @@ export const C = {
 	skin: '#f5c99b',
 	blush: '#f29a8a',
 	cap: '#e8423f',
-	capDark: '#b52d2a',
 	hair: '#6b4229',
 	shirt: '#3a7bd5',
 	pants: '#4a3b6b',
@@ -127,8 +126,9 @@ function cached(key: string, fn: () => Sprite): Sprite {
 	return s;
 }
 
-export type Look = { hair: string; shirt: string; cap: boolean };
-export const PLAYER_LOOK: Look = { hair: C.hair, shirt: C.shirt, cap: true };
+/** `cap` is the hat's colour, or null for none. */
+export type Look = { hair: string; shirt: string; cap: string | null };
+export const PLAYER_LOOK: Look = { hair: C.hair, shirt: C.shirt, cap: C.cap };
 
 /**
  * A person, 16×16. `step` 0–3 is the walk cycle (1 and 3 lift a leg).
@@ -167,8 +167,8 @@ export function person(dir: Dir, step: number, look: Look, riding = false): Spri
 				r(10, 4, 1, 2, C.ink);
 				r(10, 6, 1, 1, C.blush);
 				if (look.cap) {
-					r(5, 1, 7, 2, C.cap);
-					r(11, 3, 3, 1, C.capDark);
+					r(5, 1, 7, 2, look.cap);
+					r(11, 3, 3, 1, shade(look.cap, -0.25));
 				} else {
 					r(5, 1, 7, 2, look.hair);
 				}
@@ -198,14 +198,14 @@ export function person(dir: Dir, step: number, look: Look, riding = false): Spri
 				r(5, 7, 1, 1, C.blush);
 				r(10, 7, 1, 1, C.blush);
 				if (look.cap) {
-					r(4, 1, 8, 2, C.cap);
-					r(4, 3, 8, 1, C.capDark);
+					r(4, 1, 8, 2, look.cap);
+					r(4, 3, 8, 1, shade(look.cap, -0.25));
 				} else {
 					r(4, 1, 8, 3, look.hair);
 				}
 			} else {
 				r(4, 2, 8, 6, look.hair);
-				if (look.cap) r(4, 1, 8, 3, C.cap);
+				if (look.cap) r(4, 1, 8, 3, look.cap);
 				else r(4, 1, 8, 2, look.hair);
 			}
 		})
@@ -619,41 +619,82 @@ export function shade(hex: string, amount: number): string {
 }
 
 /** How far a building's sprite reaches above its footprint (its roof). */
-export const ROOF: Record<Building['kind'], number> = {
+const ROOF: Record<Building['kind'], number> = {
 	house: 10,
 	stable: 12,
 	barn: 12,
 	coop: 8,
 	stall: 12,
-	well: 14
+	well: 14,
+	fountain: 10,
+	plinth: 24
 };
+/** An upstairs makes a house this much taller. */
+const UPSTAIRS = 16;
 
-export function building(b: Building): Sprite {
+/**
+ * How far a building reaches above its footprint. `look` is what's been
+ * built: for home, how many upgrades (3 adds an upstairs); for the fountain,
+ * 0 for the building site; for the plinth, 0 when empty.
+ */
+export function roof(b: Building, look = 0): number {
+	return ROOF[b.kind] + (b.kind === 'house' && look >= 3 ? UPSTAIRS : 0);
+}
+
+export function building(b: Building, look = 0): Sprite {
+	const top = roof(b, look);
 	const w = b.w * TILE;
-	const h = b.h * TILE + ROOF[b.kind];
+	const h = b.h * TILE + top;
 	const dark = shade(b.color, -0.3);
-	return cached(`building:${b.id}`, () =>
+	const sprite = cached(`building:${b.id}:${look}`, () =>
 		make(w, h, (r) => {
-			const top = ROOF[b.kind];
 			if (b.kind === 'house') {
-				r(4, top + 30, w - 8, h - top - 31, C.wall);
+				// The roof stays put; an upstairs adds wall below it.
+				const up = top - ROOF.house;
+				const base = ROOF.house;
+				r(4, base + 30, w - 8, h - base - 31, C.wall);
 				r(4, h - 5, w - 8, 4, C.wallShade);
 				r(w - 22, 0, 8, 14, C.stone);
 				r(w - 23, 0, 10, 2, C.stoneDark);
-				r(0, 4, w, top + 28, b.color);
-				for (let y = 10; y < top + 30; y += 6) r(0, y, w, 1, dark);
+				r(0, 4, w, base + 28, b.color);
+				for (let y = 10; y < base + 30; y += 6) r(0, y, w, 1, dark);
 				r(0, 4, w, 3, dark);
-				r(0, top + 30, w, 2, dark);
+				r(0, base + 30, w, 2, dark);
+				if (up) {
+					r(4, base + 32 + up - 1, w - 8, 1, C.wallShade);
+					for (const x of [14, w / 2 - 4, w - 22]) {
+						r(x, base + 34, 8, 9, C.woodLight);
+						r(x + 1, base + 35, 6, 7, C.glass);
+						r(x + 1, base + 35, 2, 2, C.white);
+					}
+				}
 				const door = Math.floor(w / 2) - 6;
 				r(door, h - 22, 12, 21, C.woodDark);
 				r(door + 1, h - 21, 10, 20, C.wood);
 				r(door + 8, h - 12, 1, 1, C.ink);
 				for (const x of [10, w - 24]) {
-					r(x, top + 36, 14, 12, C.woodLight);
-					r(x + 1, top + 37, 12, 10, C.glass);
-					r(x + 7, top + 37, 1, 10, C.woodLight);
-					r(x + 1, top + 41, 12, 1, C.woodLight);
-					r(x + 2, top + 38, 2, 2, C.white);
+					const y = top + 36;
+					r(x, y, 14, 12, C.woodLight);
+					r(x + 1, y + 1, 12, 10, C.glass);
+					r(x + 7, y + 1, 1, 10, C.woodLight);
+					r(x + 1, y + 5, 12, 1, C.woodLight);
+					r(x + 2, y + 2, 2, 2, C.white);
+					if (look >= 1) {
+						// Window boxes, full of flowers.
+						r(x - 1, y + 12, 16, 3, C.woodDark);
+						r(x, y + 11, 14, 1, C.leaf);
+						['#f7a8c4', C.petal, C.white, C.berry].forEach((c, i) => r(x + i * 4, y + 9, 2, 2, c));
+					}
+				}
+				if (look >= 2) {
+					// A porch: a striped awning on posts, and a lantern by the door.
+					r(door - 6, h - 27, 24, 4, C.white);
+					for (let x = door - 6; x < door + 18; x += 6) r(x, h - 27, 3, 4, b.color);
+					r(door - 6, h - 23, 24, 1, dark);
+					r(door - 5, h - 22, 2, 21, C.woodLight);
+					r(door + 15, h - 22, 2, 21, C.woodLight);
+					r(door + 19, h - 20, 3, 4, C.corn);
+					r(door + 19, h - 21, 3, 1, C.ink);
 				}
 			} else if (b.kind === 'stable' || b.kind === 'barn') {
 				r(4, top + 14, w - 8, h - top - 15, b.color);
@@ -692,6 +733,15 @@ export function building(b: Building): Sprite {
 					r(x, 2, 8, 14, c);
 					r(x + 1, 16, 6, 2, c);
 				}
+			} else if (b.kind === 'fountain') {
+				if (look) fountain(r, w, h, look);
+				else site(r, w, h);
+			} else if (b.kind === 'plinth') {
+				r(1, top + 2, w - 2, h - top - 3, C.stone);
+				r(1, top + 2, w - 2, 2, C.white);
+				r(1, h - 4, w - 2, 3, C.stoneDark);
+				r(4, top + 6, w - 8, 4, C.stoneDark);
+				r(5, top + 7, w - 10, 2, C.coin);
 			} else {
 				r(2, top + 12, w - 4, h - top - 13, C.stone);
 				for (let y = top + 16; y < h - 2; y += 5) r(2, y, w - 4, 1, C.stoneDark);
@@ -703,6 +753,142 @@ export function building(b: Building): Sprite {
 				r(13, 18, 5, 5, C.woodLight);
 			}
 		})
+	);
+	if (b.kind !== 'plinth' || !look) return sprite;
+	// A golden animal stands on the plinth.
+	return cached(`statue:${b.id}:${look}`, () => {
+		const animal = golden(STATUE_SPRITES[STATUES[look - 1]]());
+		const canvas = document.createElement('canvas');
+		canvas.width = sprite.w;
+		canvas.height = sprite.h;
+		const ctx = canvas.getContext('2d')!;
+		ctx.drawImage(sprite.canvas, 0, 0);
+		ctx.drawImage(
+			animal,
+			Math.round((sprite.w - animal.width) / 2),
+			ROOF.plinth + 3 - animal.height
+		);
+		return { canvas, w: sprite.w, h: sprite.h };
+	});
+}
+
+const STATUE_SPRITES: Record<(typeof STATUES)[number], () => Sprite> = {
+	chicken: () => chicken(false),
+	sheep: () => sheep(true),
+	cow: () => cow(false),
+	horse: () => horse('right', 0)
+};
+
+/** A sprite turned to gold: light, mid and dark gold by brightness, keeping the outline. */
+function golden(s: Sprite): HTMLCanvasElement {
+	const canvas = document.createElement('canvas');
+	canvas.width = s.w;
+	canvas.height = s.h;
+	const ctx = canvas.getContext('2d')!;
+	ctx.drawImage(s.canvas, 0, 0);
+	const img = ctx.getImageData(0, 0, s.w, s.h);
+	const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+	const [light, mid, deep] = [C.coinLight, C.coin, C.coinDark].map(rgb);
+	const d = img.data;
+	for (let i = 0; i < d.length; i += 4) {
+		if (!d[i + 3] || (d[i] === 0x2b && d[i + 1] === 0x1d && d[i + 2] === 0x14)) continue;
+		const lum = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
+		d.set(lum > 190 ? light : lum > 110 ? mid : deep, i);
+	}
+	ctx.putImageData(img, 0, 0);
+	return canvas;
+}
+
+/** A building site: dug earth, stakes and rope, a pile of bricks and a sign. */
+function site(r: Rect, w: number, h: number) {
+	r(2, h - 26, w - 4, 24, C.soilDry);
+	r(4, h - 20, 6, 1, C.soilDryDark);
+	r(16, h - 10, 8, 1, C.soilDryDark);
+	for (const x of [1, w - 4]) r(x, h - 30, 3, 28, C.woodLight);
+	r(1, h - 28, w - 2, 1, C.berry);
+	r(1, h - 22, w - 2, 1, C.white);
+	r(6, h - 9, 10, 3, C.berry);
+	r(8, h - 12, 6, 3, C.berry);
+	r(7, h - 7, 1, 1, C.ink);
+	r(12, h - 10, 1, 1, C.ink);
+	r(20, h - 18, 2, 14, C.woodDark);
+	r(15, h - 26, 12, 9, C.woodLight);
+	r(17, h - 23, 6, 2, C.stoneDark);
+	r(22, h - 24, 2, 5, C.woodDark);
+}
+
+/** The fountain: a stone basin, and a spout that splashes (looks 1 and 2 take turns). */
+function fountain(r: Rect, w: number, h: number, look: number) {
+	r(1, h - 16, w - 2, 15, C.stone);
+	r(1, h - 4, w - 2, 3, C.stoneDark);
+	r(3, h - 16, w - 6, 6, C.water);
+	r(5, h - 15, 4, 1, C.waterLight);
+	r(w / 2 - 2, h - 30, 4, 18, C.stone);
+	r(w / 2 - 6, h - 31, 12, 3, C.stoneDark);
+	const a = look === 1;
+	r(w / 2 - 1, h - 38, 2, 7, C.waterLight);
+	r(w / 2 - 6, h - 37 + (a ? 0 : 1), 3, 2, C.waterLight);
+	r(w / 2 + 3, h - 37 + (a ? 1 : 0), 3, 2, C.waterLight);
+	r(w / 2 - 9, h - 33 + (a ? 1 : 0), 2, 4, C.waterLight);
+	r(w / 2 + 7, h - 33 + (a ? 0 : 1), 2, 4, C.waterLight);
+	r(w / 2 - 10, h - 21 + (a ? 0 : 2), 2, 3, C.waterLight);
+	r(w / 2 + 8, h - 21 + (a ? 2 : 0), 2, 3, C.waterLight);
+}
+
+/** A lamp post, 8×24, standing at the bottom middle of its tile. */
+export function lamp(): Sprite {
+	return cached('lamp', () =>
+		make(8, 24, (r) => {
+			r(3, 7, 2, 16, C.patch);
+			r(2, 21, 4, 2, C.patch);
+			r(1, 1, 6, 6, C.patch);
+			r(2, 2, 4, 4, C.corn);
+			r(3, 3, 1, 1, C.white);
+			r(0, 0, 8, 1, C.patch);
+		})
+	);
+}
+
+/** A flower bed, 14×10, on the ground. */
+export function bed(): Sprite {
+	return cached('bed', () =>
+		make(14, 10, (r) => {
+			r(0, 2, 14, 8, C.woodDark);
+			r(1, 3, 12, 6, C.soilWet);
+			const colours = ['#f7a8c4', C.petal, C.white, C.berry, '#a8c8ff'];
+			colours.forEach((c, i) => {
+				const x = [1, 4, 6, 9, 11][i];
+				const y = (i % 2) * 2;
+				r(x, y + 2, 1, 3, C.leaf);
+				r(x, y, 2, 2, c);
+			});
+		})
+	);
+}
+
+/** Bunting, for the builder's menu: a little string of flags. */
+function buntingIcon(): Sprite {
+	return cached('bunting', () =>
+		make(16, 12, (r) => {
+			r(0, 1, 16, 1, C.woodDark);
+			BUNTING_COLOURS.forEach((c, i) => {
+				r(i * 4, 2, 4, 3, c);
+				r(i * 4 + 1, 5, 2, 3, c);
+			});
+		})
+	);
+}
+
+export const BUNTING_COLOURS = [C.berry, C.petal, C.shirt, C.leaf];
+
+/** A picture of each thing the builder makes, for the menu. */
+export function decorSprite(d: Decor): Sprite {
+	if (d === 'bunting') return buntingIcon();
+	if (d === 'beds') return bed();
+	if (d === 'lamps') return lamp();
+	return building(
+		BUILDINGS.find((b) => b.kind === 'fountain')!,
+		1
 	);
 }
 

@@ -8,14 +8,18 @@ import {
 	progress,
 	sheep as sheepState,
 	stage,
+	STATUES,
 	ANIMAL_NAMES,
 	type Animal,
 	type Farm
 } from '../game.ts';
 import { target, type Animals, type Thing } from './interact.ts';
 import {
+	BEDS,
 	BUILDINGS,
+	BUNTING,
 	H,
+	LAMPS,
 	NPCS,
 	open,
 	PASTURE,
@@ -41,7 +45,10 @@ import {
 	icon,
 	person,
 	PLAYER_LOOK,
-	ROOF,
+	bed,
+	BUNTING_COLOURS,
+	lamp,
+	roof,
 	sheep,
 	TILE,
 	tree,
@@ -445,6 +452,8 @@ export class World {
 
 		const bob = Math.floor(time / 400) % 2;
 		this.drawPlots(now, bob);
+		if (this.farm.decor.includes('beds'))
+			for (const b of BEDS) this.blit(bed(), b.x * TILE, b.y * TILE + 3);
 		if (this.walk) this.drawMarker(this.walk.marker, time);
 
 		// Things that stand up, drawn from the back (top) to the front.
@@ -463,15 +472,31 @@ export class World {
 						draw: () => this.blit(tree(x * 7 + y), x * TILE - 1, y * TILE - 9)
 					});
 
-		for (const b of BUILDINGS)
+		for (const b of BUILDINGS) {
+			const look = this.look(b.id, bob);
 			items.push({
 				y: (b.y + b.h) * TILE - 1,
-				draw: () => this.blit(building(b), b.x * TILE - 1, b.y * TILE - ROOF[b.kind] - 1)
+				draw: () => this.blit(building(b, look), b.x * TILE - 1, b.y * TILE - roof(b, look) - 1)
 			});
+		}
+
+		const decor = this.farm.decor;
+		if (decor.includes('lamps'))
+			for (const l of LAMPS)
+				items.push({
+					y: l.y * TILE + 14,
+					draw: () => this.blit(lamp(), l.x * TILE + 3, l.y * TILE - 10)
+				});
+		if (decor.includes('bunting'))
+			for (const x of [BUNTING.from, BUNTING.to])
+				items.push({
+					y: BUNTING.y * TILE + 2,
+					draw: () => this.pole(x * TILE, BUNTING.y * TILE)
+				});
 
 		for (const npc of NPCS) {
 			const dir = this.npcFacing.get(npc.id) ?? 'down';
-			const look = { hair: npc.hair, shirt: npc.shirt, cap: false };
+			const look = { hair: npc.hair, shirt: npc.shirt, cap: npc.cap ?? null };
 			const req = this.farm.requests[npc.id];
 			items.push({
 				y: npc.y * TILE + 14,
@@ -550,6 +575,7 @@ export class World {
 
 		items.sort((a, b) => a.y - b.y);
 		for (const item of items) item.draw();
+		if (decor.includes('bunting')) this.drawBunting();
 
 		this.drawFloaters();
 	}
@@ -586,6 +612,48 @@ export class World {
 				ctx.fillRect(x + 2, y + 14, Math.round(12 * progress(plot, now)), 2);
 			}
 		});
+	}
+
+	/** How a building looks, for what the builder's done (the fountain splashes with `bob`). */
+	private look(id: string, bob: number): number {
+		const f = this.farm;
+		if (id === 'home') return f.home;
+		if (id === 'fountain') return f.decor.includes('fountain') ? 1 + bob : 0;
+		if (id === 'plinth') return f.statue ? STATUES.indexOf(f.statue) + 1 : 0;
+		return 0;
+	}
+
+	/** A bunting pole, standing on the edge of a tile. */
+	private pole(x: number, y: number) {
+		const { ctx } = this;
+		ctx.fillStyle = C.ink;
+		ctx.fillRect(x - 2, y - 22, 4, 26);
+		ctx.fillStyle = C.woodLight;
+		ctx.fillRect(x - 1, y - 21, 2, 24);
+	}
+
+	/** Flags strung between the poles across the square, sagging in the middle. */
+	private drawBunting() {
+		const { ctx } = this;
+		const x0 = BUNTING.from * TILE;
+		const x1 = BUNTING.to * TILE;
+		const y = BUNTING.y * TILE - 20;
+		const sag = (x: number) => Math.round(Math.sin(((x - x0) / (x1 - x0)) * Math.PI) * 6);
+		for (let x = x0; x < x1; x++) {
+			ctx.fillStyle = C.ink;
+			ctx.fillRect(x, y + sag(x), 1, 1);
+		}
+		for (let x = x0 + 3, i = 0; x < x1 - 6; x += 7, i++) {
+			const top = y + sag(x + 2) + 1;
+			ctx.fillStyle = C.ink;
+			ctx.fillRect(x - 1, top, 7, 4);
+			ctx.fillRect(x, top + 4, 5, 2);
+			ctx.fillRect(x + 1, top + 6, 3, 2);
+			ctx.fillStyle = BUNTING_COLOURS[i % BUNTING_COLOURS.length];
+			ctx.fillRect(x, top, 5, 3);
+			ctx.fillRect(x + 1, top + 3, 3, 2);
+			ctx.fillRect(x + 2, top + 5, 1, 2);
+		}
 	}
 
 	/** Corner brackets round where the player is heading. */
