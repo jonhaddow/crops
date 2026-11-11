@@ -41,13 +41,15 @@ export const BUILDINGS: Building[] = [
 ];
 
 /**
- * The field's plots, in the order of Farm.plots: the first 12 to start with
- * (4×3), then the bottom row, then the right-hand column, as land is bought.
+ * The plots, in the order of Farm.plots: the first 12 to start with (4×3),
+ * then the bottom row, then the right-hand column, as land is bought. After
+ * that comes the north field behind home, a row of 6 at a time from its gate.
  */
 export const PLOTS: Spot[] = [
 	...[10, 11, 12].flatMap((y) => [3, 4, 5, 6].map((x) => ({ x, y }))),
 	...[3, 4, 5, 6].map((x) => ({ x, y: 13 })),
-	...[10, 11, 12, 13].map((y) => ({ x: 7, y }))
+	...[10, 11, 12, 13].map((y) => ({ x: 7, y })),
+	...[5, 4, 3].flatMap((y) => [12, 13, 14, 15, 16, 17].map((x) => ({ x, y })))
 ];
 
 export type Area = { x: number; y: number; w: number; h: number };
@@ -101,9 +103,9 @@ export const START_PLAYER = { x: 6, y: 8, facing: 'down' as Dir };
 export const START_HORSE: Spot = { x: 34, y: 25 };
 
 const TREES: Spot[] = [
-	[12, 4],
-	[15, 5],
-	[18, 3],
+	[10, 3],
+	[20, 3],
+	[19, 8],
 	[20, 6],
 	[3, 17],
 	[6, 19],
@@ -143,6 +145,7 @@ function build(): Terrain[][] {
 	rect(34, 7, 1, 1, 'path');
 	rect(5, 7, 5, 2, 'path'); // home's front yard
 	rect(9, 7, 1, 8, 'path');
+	rect(10, 7, 5, 1, 'path'); // to the north field
 	rect(23, 26, 6, 1, 'path'); // to the paddock gate
 	rect(35, 15, 1, 1, 'path'); // yellow house
 	rect(20, 13, 8, 2, 'path'); // the square by the well and stall
@@ -156,6 +159,8 @@ function build(): Terrain[][] {
 	// Field: soil plots inside a fence with a gate at the top.
 	for (const p of PLOTS) set(p.x, p.y, 'soil');
 	fence(set, 2, 9, 7, 6, [{ x: 5, y: 9 }]);
+	// The north field, bought later, gate at the bottom.
+	fence(set, 11, 2, 8, 5, [{ x: 14, y: 6 }]);
 
 	// Chicken pen below the coop, gate at the bottom.
 	fence(set, 10, 11, 6, 4, [{ x: 12, y: 14 }], true);

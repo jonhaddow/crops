@@ -1,6 +1,7 @@
 // Pixel art, drawn in code: each sprite is flat-coloured rectangles on a small
 // canvas, then given a 1px ink outline automatically. Sprites are made once and
 // cached. One art pixel becomes several screen pixels when drawn.
+import type { Crop } from '../game.ts';
 import { BUILDINGS, H, hash, terrain, TERRAIN, W, type Building, type Dir } from './map.ts';
 
 export const TILE = 16;
@@ -31,6 +32,15 @@ export const C = {
 	pumpkin: '#f39a1d',
 	pumpkinDark: '#d27a0c',
 	pumpkinLight: '#f8c15c',
+	potato: '#c9945a',
+	potatoDark: '#9c6b38',
+	potatoLight: '#e2b77e',
+	tomato: '#e3362f',
+	corn: '#ffd23f',
+	cornDark: '#e0a82a',
+	petal: '#ffcc1f',
+	melon: '#ff5a6a',
+	rind: '#3f9b3a',
 	egg: '#fbeccf',
 	coin: '#ffc93c',
 	coinDark: '#e09a1a',
@@ -327,6 +337,11 @@ export type Icon =
 	| 'carrot'
 	| 'strawberry'
 	| 'pumpkin'
+	| 'potato'
+	| 'tomato'
+	| 'corn'
+	| 'sunflower'
+	| 'watermelon'
 	| 'egg'
 	| 'coin'
 	| 'drop'
@@ -384,6 +399,75 @@ export function icon(name: Icon): Sprite {
 					r(5, 5, 1, 8, C.pumpkinDark);
 					r(10, 5, 1, 8, C.pumpkinDark);
 					r(7, 6, 2, 6, C.pumpkinLight);
+					return;
+				case 'potato':
+					r(4, 5, 8, 8, C.potato);
+					r(2, 7, 12, 5, C.potato);
+					r(3, 6, 10, 7, C.potato);
+					r(5, 6, 3, 1, C.potatoLight);
+					r(3, 8, 1, 2, C.potatoLight);
+					for (const [x, y] of [
+						[6, 9],
+						[10, 7],
+						[9, 11],
+						[12, 10]
+					])
+						r(x, y, 1, 1, C.potatoDark);
+					return;
+				case 'tomato':
+					disc(r, 8, 9, 6, C.tomato);
+					r(5, 6, 2, 2, C.blush);
+					r(4, 4, 8, 2, C.leaf);
+					r(6, 3, 4, 1, C.leaf);
+					r(7, 1, 2, 3, C.leafDark);
+					return;
+				case 'corn':
+					r(6, 1, 4, 12, C.corn);
+					r(5, 3, 6, 9, C.corn);
+					for (const y of [3, 5, 7, 9, 11]) {
+						r(6, y, 1, 1, C.cornDark);
+						r(9, y, 1, 1, C.cornDark);
+					}
+					r(8, 2, 1, 1, C.cornDark);
+					r(3, 7, 2, 7, C.leaf);
+					r(11, 7, 2, 7, C.leaf);
+					r(4, 11, 8, 4, C.leafLight);
+					r(7, 13, 2, 2, C.leaf);
+					return;
+				case 'sunflower':
+					r(7, 11, 2, 5, C.leaf);
+					r(9, 12, 4, 2, C.leafLight);
+					disc(r, 8, 6, 6, C.petal);
+					for (const [x, y] of [
+						[2, 6],
+						[8, 0],
+						[13, 6],
+						[8, 11]
+					])
+						r(x, y, 1, 1, C.coinDark);
+					disc(r, 8, 6, 3, C.woodDark);
+					r(7, 5, 1, 1, C.wood);
+					r(9, 7, 1, 1, C.wood);
+					return;
+				case 'watermelon':
+					// A slice: rind round the bottom, red inside, dark seeds.
+					for (let y = 0; y <= 7; y++) {
+						const half = Math.round(Math.sqrt(64 - y * y));
+						r(8 - half, 5 + y, half * 2, 1, C.rind);
+						if (y < 7) {
+							const inner = Math.round(Math.sqrt(36 - y * y));
+							r(8 - inner, 5 + y, inner * 2, 1, y < 6 ? C.melon : C.leafLight);
+						}
+					}
+					r(2, 5, 12, 1, C.melon);
+					for (const [x, y] of [
+						[5, 6],
+						[8, 7],
+						[11, 6],
+						[6, 9],
+						[10, 9]
+					])
+						r(x, y, 1, 1, C.ink);
 					return;
 				case 'egg':
 					r(5, 2, 6, 12, C.egg);
@@ -472,7 +556,7 @@ export function icon(name: Icon): Sprite {
 }
 
 /** A half-grown crop, with a hint of what's coming. */
-export function growing(crop: 'carrot' | 'strawberry' | 'pumpkin'): Sprite {
+export function growing(crop: Crop): Sprite {
 	return cached(`growing:${crop}`, () =>
 		make(16, 16, (r) => {
 			r(7, 4, 2, 10, C.leaf);
@@ -480,11 +564,28 @@ export function growing(crop: 'carrot' | 'strawberry' | 'pumpkin'): Sprite {
 			r(9, 3, 5, 3, C.leaf);
 			r(3, 10, 4, 2, C.leaf);
 			r(9, 9, 5, 2, C.leafLight);
-			if (crop === 'carrot') r(5, 13, 6, 2, C.carrot);
-			else if (crop === 'strawberry') {
-				r(2, 4, 2, 2, C.white);
-				r(12, 8, 2, 2, C.berry);
-			} else r(10, 11, 4, 4, C.leafLight);
+			switch (crop) {
+				case 'carrot':
+					return r(5, 13, 6, 2, C.carrot);
+				case 'potato':
+					return r(4, 13, 3, 2, C.potato);
+				case 'strawberry':
+					r(2, 4, 2, 2, C.white);
+					return r(12, 8, 2, 2, C.berry);
+				case 'tomato':
+					r(2, 9, 2, 2, C.leafLight);
+					return r(12, 6, 2, 2, C.tomato);
+				case 'corn':
+					r(7, 0, 2, 4, C.leafLight);
+					return r(9, 7, 2, 3, C.corn);
+				case 'pumpkin':
+					return r(10, 11, 4, 4, C.leafLight);
+				case 'sunflower':
+					r(7, 0, 2, 4, C.leaf);
+					return r(6, 0, 4, 2, C.petal);
+				case 'watermelon':
+					return r(9, 11, 5, 4, C.rind);
+			}
 		})
 	);
 }
