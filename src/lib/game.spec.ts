@@ -111,7 +111,8 @@ describe('cow, sheep and fishing', () => {
 
 	it('catches mostly fish, sometimes something else', () => {
 		expect(catchFor(0.01)).toBe('boot');
-		expect(catchFor(0.1)).toBe('goldfish');
+		expect(catchFor(0.1)).toBe('goldsquid');
+		expect(catchFor(0.2)).toBe('goldfish');
 		expect(catchFor(0.3)).toBe('bigfish');
 		expect(catchFor(0.9)).toBe('fish');
 	});

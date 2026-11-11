@@ -353,6 +353,7 @@ export type Icon =
 	| 'fish'
 	| 'bigfish'
 	| 'goldfish'
+	| 'goldsquid'
 	| 'boot'
 	| 'hay';
 
@@ -538,6 +539,25 @@ export function icon(name: Icon): Sprite {
 					}
 					return;
 				}
+				case 'goldsquid':
+					// Pointy head, round body, wavy tentacles.
+					r(7, 0, 2, 1, C.coin);
+					r(6, 1, 4, 2, C.coin);
+					r(5, 3, 6, 6, C.coin);
+					r(4, 5, 8, 3, C.coin);
+					r(3, 4, 1, 2, C.coinDark);
+					r(12, 4, 1, 2, C.coinDark);
+					r(6, 2, 1, 3, C.coinLight);
+					r(6, 6, 1, 1, C.ink);
+					r(9, 6, 1, 1, C.ink);
+					for (const x of [4, 6, 9, 11]) {
+						r(x, 9, 1, 4, C.coinDark);
+						r(x + (x < 8 ? -1 : 1), 13, 1, 2, C.coinDark);
+					}
+					r(7, 9, 2, 6, C.coin);
+					r(9, 1, 1, 1, C.white);
+					r(10, 8, 1, 1, C.white);
+					return;
 				case 'boot':
 					r(4, 2, 5, 9, '#7a4a2a');
 					r(4, 9, 10, 4, '#7a4a2a');
