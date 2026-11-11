@@ -114,7 +114,8 @@ describe('cow, sheep and fishing', () => {
 		expect(catchFor(0.1)).toBe('goldsquid');
 		expect(catchFor(0.2)).toBe('goldfish');
 		expect(catchFor(0.3)).toBe('bigfish');
-		expect(catchFor(0.9)).toBe('fish');
+		expect(catchFor(0.5)).toBe('bigfish');
+		expect(catchFor(0.6)).toBe('fish');
 	});
 });
 

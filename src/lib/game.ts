@@ -281,7 +281,7 @@ export function catchFor(roll: number): Produce {
 	if (roll < 0.08) return 'boot';
 	if (roll < 0.18) return 'goldsquid';
 	if (roll < 0.23) return 'goldfish';
-	if (roll < 0.45) return 'bigfish';
+	if (roll < 0.55) return 'bigfish';
 	return 'fish';
 }
 
