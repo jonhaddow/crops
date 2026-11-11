@@ -274,14 +274,14 @@ export function buyLand(farm: Farm): boolean {
 }
 
 /**
- * What comes up on the line, from a random number 0–1: a fish 45%, a big
- * fish 32%, a golden squid 10%, an old boot 8%, a golden fish 5%.
+ * What comes up on the line, from a random number 0–1: a fish 52%, a big
+ * fish 32%, an old boot 8%, a golden fish 5%, a golden squid 3%.
  */
 export function catchFor(roll: number): Produce {
 	if (roll < 0.08) return 'boot';
-	if (roll < 0.18) return 'goldsquid';
-	if (roll < 0.23) return 'goldfish';
-	if (roll < 0.55) return 'bigfish';
+	if (roll < 0.11) return 'goldsquid';
+	if (roll < 0.16) return 'goldfish';
+	if (roll < 0.48) return 'bigfish';
 	return 'fish';
 }
 
