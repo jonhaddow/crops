@@ -72,7 +72,7 @@ const ITEMS = {
 	fish: { one: 'fish', many: 'fish', price: 2 },
 	bigfish: { one: 'big fish', many: 'big fish', price: 4 },
 	goldfish: { one: 'golden fish', many: 'golden fish', price: 8 },
-	goldsquid: { one: 'golden squid', many: 'golden squid', price: 30 },
+	goldsquid: { one: 'golden squid', many: 'golden squid', price: 20 },
 	boot: { one: 'old boot', many: 'old boots', price: 1 }
 } as const;
 
