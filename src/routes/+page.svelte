@@ -15,6 +15,7 @@
 		DECOR,
 		DECOR_NAMES,
 		feed,
+		HOME,
 		feedCow,
 		fulfil,
 		harvest,
@@ -37,8 +38,7 @@
 		type Animal,
 		type Crop,
 		type Decor,
-		type Produce,
-		type Statue
+		type Produce
 	} from '#lib/game.ts';
 	import { play } from '#lib/sound.ts';
 	import { World } from '#lib/world/engine.ts';
@@ -101,7 +101,7 @@
 	const homeBuilding = BUILDINGS.find((b) => b.id === 'home')!;
 	const plinth = BUILDINGS.find((b) => b.id === 'plinth')!;
 	/** Pictures for the builder's menu: home after each upgrade, the decorations, the statues. */
-	const homeImg = [1, 2, 3].map((n) => spriteUrl(building(homeBuilding, n)));
+	const homeImg = HOME.map((_, i) => spriteUrl(building(homeBuilding, i + 1)));
 	const decorImg = Object.fromEntries(
 		DECOR_NAMES.map((d) => [d, spriteUrl(decorSprite(d))])
 	) as Record<Decor, string>;
@@ -353,14 +353,6 @@
 		say('Bang, bang, bang... all done!', `Go and look at ${what}!`);
 	}
 
-	const upgradeHomeOne = () => built(upgradeHome(farm), 'your house');
-	const buildDecorOne = (d: Decor) =>
-		built(
-			buildDecor(farm, d),
-			d === 'fountain' ? 'the fountain' : `the ${DECOR[d].name.toLowerCase()}`
-		);
-	const buildStatueOne = (s: Statue) => built(buildStatue(farm, s), 'the statue');
-
 	function closeAll() {
 		picking = null;
 		marketOpen = false;
@@ -411,6 +403,10 @@
 	const land = $derived(nextLand(farm));
 	const homeNext = $derived(nextHome(farm));
 </script>
+
+{#snippet price(n: number)}
+	<span class="price"><img src={img('coin')} alt="" /><span class="num">{n}</span></span>
+{/snippet}
 
 <svelte:window onkeydown={keydown} onkeyup={keyup} />
 
@@ -517,9 +513,7 @@
 					>
 						<img class="big" src={img(item)} alt="" />
 						<span class="num">×{farm.basket[item]}</span>
-						<span class="price"
-							><img src={img('coin')} alt="" /><span class="num">{sellPrice(item)}</span></span
-						>
+						{@render price(sellPrice(item))}
 					</button>
 				{/each}
 				{#each animalsForSale as kind (kind)}
@@ -531,10 +525,7 @@
 					>
 						<img class="big" src={animalImg[kind]} alt="" />
 						<span class="num">×{farm.animals[kind].length}</span>
-						<span class="price"
-							><img src={img('coin')} alt="" /><span class="num">{ANIMALS[kind].sellPrice}</span
-							></span
-						>
+						{@render price(ANIMALS[kind].sellPrice)}
 					</button>
 				{/each}
 				{#if !forSale.length && !animalsForSale.length}
@@ -553,10 +544,7 @@
 					>
 						<span class="mini-packet"><img src={img(crop)} alt="" /></span>
 						<span class="num">×{farm.seeds[crop]}</span>
-						<span class="price"
-							><img src={img('coin')} alt="" /><span class="num">{CROPS[crop].seedPrice}</span
-							></span
-						>
+						{@render price(CROPS[crop].seedPrice)}
 					</button>
 				{/each}
 			</div>
@@ -576,10 +564,7 @@
 						{#if full}
 							<span class="full">Full!</span>
 						{:else}
-							<span class="price"
-								><img src={img('coin')} alt="" /><span class="num">{ANIMALS[kind].price}</span
-								></span
-							>
+							{@render price(ANIMALS[kind].price)}
 						{/if}
 					</button>
 				{/each}
@@ -592,9 +577,7 @@
 					>
 						<span class="mini-land"><img src={img('sprout')} alt="" /></span>
 						<span class="num">+{land.plots - farm.plots.length}</span>
-						<span class="price"
-							><img src={img('coin')} alt="" /><span class="num">{land.price}</span></span
-						>
+						{@render price(land.price)}
 					</button>
 				{/if}
 			</div>
@@ -625,17 +608,15 @@
 						class="row"
 						disabled={farm.coins < homeNext.price}
 						aria-label="Build {homeNext.name}"
-						onclick={upgradeHomeOne}
+						onclick={() => built(upgradeHome(farm), 'your house')}
 					>
 						<img class="house" src={homeImg[farm.home]} alt="" />
 						<span class="label">{homeNext.name}</span>
-						<span class="price"
-							><img src={img('coin')} alt="" /><span class="num">{homeNext.price}</span></span
-						>
+						{@render price(homeNext.price)}
 					</button>
 				{:else}
 					<div class="row done">
-						<img class="house" src={homeImg[2]} alt="" />
+						<img class="house" src={homeImg[HOME.length - 1]} alt="" />
 						<span class="label">All done!</span>
 					</div>
 				{/if}
@@ -649,16 +630,14 @@
 						class="row"
 						disabled={done || farm.coins < DECOR[d].price}
 						aria-label="Build {DECOR[d].name}"
-						onclick={() => buildDecorOne(d)}
+						onclick={() => built(buildDecor(farm, d), DECOR[d].where)}
 					>
 						<img class="big" src={decorImg[d]} alt="" />
 						<span class="label">{DECOR[d].name}</span>
 						{#if done}
 							<span class="tick">✓</span>
 						{:else}
-							<span class="price"
-								><img src={img('coin')} alt="" /><span class="num">{DECOR[d].price}</span></span
-							>
+							{@render price(DECOR[d].price)}
 						{/if}
 					</button>
 				{/each}
@@ -672,15 +651,13 @@
 							class="row"
 							disabled={!!farm.statue || farm.coins < STATUE_PRICE}
 							aria-label="Build a {s} statue"
-							onclick={() => buildStatueOne(s)}
+							onclick={() => built(buildStatue(farm, s), 'the statue')}
 						>
 							<img class="statue" src={statueImg[i]} alt="" />
 							{#if farm.statue}
 								<span class="tick">✓</span>
 							{:else}
-								<span class="price"
-									><img src={img('coin')} alt="" /><span class="num">{STATUE_PRICE}</span></span
-								>
+								{@render price(STATUE_PRICE)}
 							{/if}
 						</button>
 					{/if}

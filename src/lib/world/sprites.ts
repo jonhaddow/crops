@@ -1,7 +1,7 @@
 // Pixel art, drawn in code: each sprite is flat-coloured rectangles on a small
 // canvas, then given a 1px ink outline automatically. Sprites are made once and
 // cached. One art pixel becomes several screen pixels when drawn.
-import { STATUES, type Crop, type Decor } from '../game.ts';
+import { HOME, STATUES, type Crop, type Decor } from '../game.ts';
 import { BUILDINGS, H, hash, terrain, TERRAIN, W, type Building, type Dir } from './map.ts';
 
 export const TILE = 16;
@@ -634,11 +634,11 @@ const UPSTAIRS = 16;
 
 /**
  * How far a building reaches above its footprint. `look` is what's been
- * built: for home, how many upgrades (3 adds an upstairs); for the fountain,
+ * built: for home, how many upgrades (the last adds an upstairs); for the fountain,
  * 0 for the building site; for the plinth, 0 when empty.
  */
 export function roof(b: Building, look = 0): number {
-	return ROOF[b.kind] + (b.kind === 'house' && look >= 3 ? UPSTAIRS : 0);
+	return ROOF[b.kind] + (b.kind === 'house' && look >= HOME.length ? UPSTAIRS : 0);
 }
 
 export function building(b: Building, look = 0): Sprite {
@@ -788,10 +788,10 @@ function golden(s: Sprite): HTMLCanvasElement {
 	ctx.drawImage(s.canvas, 0, 0);
 	const img = ctx.getImageData(0, 0, s.w, s.h);
 	const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-	const [light, mid, deep] = [C.coinLight, C.coin, C.coinDark].map(rgb);
+	const [light, mid, deep, ink] = [C.coinLight, C.coin, C.coinDark, C.ink].map(rgb);
 	const d = img.data;
 	for (let i = 0; i < d.length; i += 4) {
-		if (!d[i + 3] || (d[i] === 0x2b && d[i + 1] === 0x1d && d[i + 2] === 0x14)) continue;
+		if (!d[i + 3] || (d[i] === ink[0] && d[i + 1] === ink[1] && d[i + 2] === ink[2])) continue;
 		const lum = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
 		d.set(lum > 190 ? light : lum > 110 ? mid : deep, i);
 	}

@@ -65,10 +65,10 @@ export const HOME = [
 
 /** What the builder can make for the village, in any order. */
 export const DECOR = {
-	bunting: { name: 'Bunting', price: 25 },
-	beds: { name: 'Flower beds', price: 40 },
-	lamps: { name: 'Lamp posts', price: 60 },
-	fountain: { name: 'A fountain', price: 100 }
+	bunting: { name: 'Bunting', price: 25, where: 'the bunting' },
+	beds: { name: 'Flower beds', price: 40, where: 'the flower beds' },
+	lamps: { name: 'Lamp posts', price: 60, where: 'the lamp posts' },
+	fountain: { name: 'A fountain', price: 100, where: 'the fountain' }
 } as const;
 export type Decor = keyof typeof DECOR;
 export const DECOR_NAMES = Object.keys(DECOR) as Decor[];
