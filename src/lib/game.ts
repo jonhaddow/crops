@@ -17,12 +17,12 @@ import {
 export const CROPS = {
 	carrot: { name: 'Carrot', growMs: 60_000, seedPrice: 1 },
 	potato: { name: 'Potato', growMs: 2 * 60_000, seedPrice: 1 },
-	tomato: { name: 'Tomato', growMs: 2 * 60_000, seedPrice: 2 },
 	strawberry: { name: 'Strawberry', growMs: 3 * 60_000, seedPrice: 2 },
-	corn: { name: 'Corn', growMs: 4 * 60_000, seedPrice: 2 },
+	tomato: { name: 'Tomato', growMs: 4 * 60_000, seedPrice: 2 },
 	pumpkin: { name: 'Pumpkin', growMs: 5 * 60_000, seedPrice: 3 },
-	sunflower: { name: 'Sunflower', growMs: 6 * 60_000, seedPrice: 4 },
-	watermelon: { name: 'Watermelon', growMs: 8 * 60_000, seedPrice: 5 }
+	corn: { name: 'Corn', growMs: 6 * 60_000, seedPrice: 3 },
+	sunflower: { name: 'Sunflower', growMs: 8 * 60_000, seedPrice: 4 },
+	watermelon: { name: 'Watermelon', growMs: 10 * 60_000, seedPrice: 5 }
 } as const;
 
 export type Crop = keyof typeof CROPS;
@@ -60,12 +60,12 @@ export const LAND = [
 const ITEMS = {
 	carrot: { one: 'carrot', many: 'carrots', price: 2 },
 	potato: { one: 'potato', many: 'potatoes', price: 3 },
-	tomato: { one: 'tomato', many: 'tomatoes', price: 3 },
 	strawberry: { one: 'strawberry', many: 'strawberries', price: 4 },
-	corn: { one: 'corn cob', many: 'corn cobs', price: 4 },
+	tomato: { one: 'tomato', many: 'tomatoes', price: 5 },
 	pumpkin: { one: 'pumpkin', many: 'pumpkins', price: 5 },
-	sunflower: { one: 'sunflower', many: 'sunflowers', price: 7 },
-	watermelon: { one: 'watermelon', many: 'watermelons', price: 10 },
+	corn: { one: 'corn cob', many: 'corn cobs', price: 6 },
+	sunflower: { one: 'sunflower', many: 'sunflowers', price: 8 },
+	watermelon: { one: 'watermelon', many: 'watermelons', price: 12 },
 	egg: { one: 'egg', many: 'eggs', price: 2 },
 	milk: { one: 'bottle of milk', many: 'bottles of milk', price: 3 },
 	wool: { one: 'ball of wool', many: 'balls of wool', price: 4 },
@@ -95,22 +95,9 @@ export const REQUESTERS = NPCS.filter((n) => n.id !== 'shopkeeper').map((n) => n
 export type Request = { item: Produce; count: number; reward: number };
 /** How long after a request is done before that villager asks again. */
 export const REQUEST_GAP_MS = 90_000;
-const REQUEST_ITEMS: Produce[] = [
-	'carrot',
-	'strawberry',
-	'pumpkin',
-	'egg',
-	'milk',
-	'wool',
-	'fish',
-	'potato',
-	'tomato',
-	'corn',
-	'sunflower',
-	'watermelon'
-];
+const REQUEST_ITEMS: Produce[] = [...CROP_NAMES, 'egg', 'milk', 'wool', 'fish'];
 /** Slow crops: villagers only ask for one or two. */
-const BIG: Produce[] = ['pumpkin', 'sunflower', 'watermelon'];
+const BIG: Produce[] = ['pumpkin', 'corn', 'sunflower', 'watermelon'];
 
 export type Farm = {
 	version: 4;
@@ -138,7 +125,7 @@ export function newFarm(): Farm {
 	return {
 		version: 4,
 		coins: 5,
-		seeds: { ...Object.fromEntries(CROP_NAMES.map((c) => [c, 0])), carrot: 3 } as Record<
+		seeds: Object.fromEntries(CROP_NAMES.map((c) => [c, c === 'carrot' ? 3 : 0])) as Record<
 			Crop,
 			number
 		>,
